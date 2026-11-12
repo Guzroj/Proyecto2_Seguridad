@@ -48,7 +48,134 @@ La misma imagen (`Dockerfile`) corre en Cloud Run con `gunicorn` en `$PORT`. Las
 (`*.run.app` del servicio) y `CSRF_TRUSTED_ORIGINS` se inyectan desde **Secret Manager**.
 Con `DEBUG=false` (por defecto) Django exige HTTPS, HSTS, cookies `Secure` y TLS hacia la base.
 Las migraciones se corren contra Neon con `python manage.py migrate`.
-*(Persona 1 completa esta sección con el pipeline y las etiquetas de versión publicadas.)*
+
+#### Arquitectura de despliegue
+
+Dos servicios independientes en la región **`us-east1`**, cada uno con su propia
+imagen en Artifact Registry (repo Docker `verdeazul`):
+
+| Servicio Cloud Run | Imagen | Expuesto | Función |
+|---|---|---|---|
+| `verdeazul` | `app` | Público (`*.run.app`) | Django + gunicorn: UI, sesiones, CSRF. |
+| `verdeazul-autorizador` | `autorizador` | Privado (sin `allUsers`) | Motor de autorización, invocado servicio-a-servicio. |
+
+`verdeazul` llama a `verdeazul-autorizador` con su *service account* y el token de identidad
+de Cloud Run (audiencia = URL del autorizador), así que el autorizador solo acepta tráfico
+autenticado. La URL privada llega a Django en la variable `AUTORIZADOR_URL`.
+
+#### Pipeline de GitHub Actions
+
+`.github/workflows/deploy.yml` se autentica con **Workload Identity Federation** (WIF, sin
+claves JSON de service account de larga vida). En cada push a `main`:
+
+1. Construye las dos imágenes con **tags explícitos**: `v1.0.0` y `sha-<hash corto>`.
+2. Hace push a Artifact Registry:
+   `us-east1-docker.pkg.dev/<proyecto>/verdeazul/app` y `.../verdeazul/autorizador`.
+3. Despliega ambos servicios en Cloud Run por etiqueta de imagen inmutable.
+4. El job `verdeazul-migrate` ejecuta `python manage.py migrate` contra Neon usando el
+   secreto del rol dueño.
+
+Nunca se publica solo `latest`: cada despliegue queda atado a una etiqueta de versión y a un
+commit, lo que permite volver a una imagen anterior sin ambigüedad.
+
+#### Secretos y variables (Secret Manager)
+
+| Secreto / variable | Contenido | Consumido por |
+|---|---|---|
+| `verdeazul-secret-key` | `SECRET_KEY` de Django | `verdeazul` |
+| `verdeazul-db-url` | `DATABASE_URL` de Neon con **rol runtime no-dueño** (`app_runtime`) y `sslmode=require` | `verdeazul` |
+| `verdeazul-migrate-db-url` | `DATABASE_URL` con el **rol dueño** | job `verdeazul-migrate` |
+| `verdeazul-allowed-hosts` | `ALLOWED_HOSTS` (`*.run.app` del servicio) | `verdeazul` |
+| `verdeazul-csrf-origins` | `CSRF_TRUSTED_ORIGINS` (orígenes HTTPS) | `verdeazul` |
+| `AUTORIZADOR_URL` | URL privada del servicio autorizador | `verdeazul` |
+
+Los valores se montan como variables de entorno; el runtime nunca recibe credenciales del
+rol dueño.
+
+#### Dos roles de base de datos (mínimo privilegio + RLS)
+
+| Rol | Uso | Privilegios |
+|---|---|---|
+| dueño (rol por defecto de Neon, p. ej. `neondb_owner`) | Solo migraciones (job `verdeazul-migrate`). | DDL: crea y altera el esquema. |
+| `app_runtime` | Runtime de `verdeazul` y del autorizador. | DML sobre las tablas; **no** es dueño ni altera el esquema. |
+
+`app_runtime` se crea **por SQL con el rol dueño**, no desde la consola/API de Neon: en este
+proyecto esas vías crean el rol con `BYPASSRLS`, `CREATEDB`, `CREATEROLE` y membresía en
+`neon_superuser`, lo que anula RLS. La contraseña vive solo en Secret Manager.
+
+```sql
+CREATE ROLE app_runtime LOGIN PASSWORD '<aleatoria>'
+    NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+```
+
+Antes de continuar, verificar que quede `rolsuper=f`, `rolbypassrls=f`, `rolcreatedb=f`,
+`rolcreaterole=f` y sin membresías.
+
+`db/roles_rls.sql` otorga los privilegios DML a `app_runtime` y activa **RLS con
+`FORCE ROW LEVEL SECURITY`**, de modo que las políticas se aplican incluso al dueño de las
+tablas y ningún camino del código puede saltarlas. `db/grant_after_migrate.sql` vuelve a otorgar los privilegios a `app_runtime`
+después de cada `migrate`, porque las tablas nuevas no heredan permisos.
+
+> **Neon Auth:** no habilitarlo si no se usa. Crea los roles `authenticated`, `anonymous` y
+> `authenticator`, y les concede DML por defecto sobre `public` (incluidas tablas de Django sin
+> RLS, como `django_session`). Si se habilitó por error, revocar esos privilegios y desactivarlo.
+
+#### Service accounts (mínimo privilegio)
+
+| Service account | Usada por | Roles |
+|---|---|---|
+| `verdeazul-app` | servicio `verdeazul` | `secretAccessor` en los 4 secretos de runtime; `run.invoker` sobre el autorizador. |
+| `verdeazul-autorizador` | servicio `verdeazul-autorizador` | Sin roles de proyecto ni acceso a secretos. |
+| `verdeazul-migrate` | Cloud Run Job `verdeazul-migrate` | `secretAccessor` solo en `verdeazul-migrate-db-url` y `verdeazul-secret-key`. |
+| `verdeazul-deploy` | GitHub Actions (WIF) | `run.admin`, `artifactregistry.writer`, `browser`, `secretAccessor` en los 5 secretos y `iam.serviceAccountUser` sobre las 3 SA de runtime. |
+
+El autorizador se despliega con `--no-allow-unauthenticated` y **sin IAP**: Cloud Run IAM valida
+el token OIDC que `verdeazul` pide al metadata server con `audience = AUTORIZADOR_URL`.
+
+#### Dependabot
+
+`.github/dependabot.yml` mantiene actualizadas las dependencias (pip y Docker) con
+PRs automáticos, reduciendo la ventana de exposición a vulnerabilidades conocidas.
+
+#### Etiquetas de versión publicadas
+
+Cada publicación se registra acá. Completar una fila por imagen y versión desplegada:
+
+| Imagen | Etiqueta | Commit | Fecha |
+|---|---|---|---|
+| `app` | _v1.0.0_ | _pendiente_ | _pendiente_ |
+| `autorizador` | _v1.0.0_ | _pendiente_ | _pendiente_ |
+
+Nunca se publica solo `latest`: toda imagen desplegada lleva una etiqueta de versión
+(`vX.Y.Z`) junto con su `sha-<hash>`, para trazabilidad y rollback reproducible.
+
+#### Despliegue de validación actual
+
+| Recurso | Valor |
+|---|---|
+| App pública | `https://verdeazul-444812071990.us-east1.run.app` |
+| Autorizador privado | `https://verdeazul-autorizador-444812071990.us-east1.run.app` |
+| Proyecto / región | `project-4d85c806-d471-4964-b73` / `us-east1` |
+| Imagen desplegada | `manual-202611121557` (validación manual; el pipeline usará `sha-<hash>`) |
+
+El autorizador quedó con `roles/run.invoker` solo para `verdeazul-app`. El path `/healthz`
+de FastAPI queda sombreado por el frontend de Cloud Run; para probar el motor usar
+`POST /autorizar` (403 fail-closed) o `GET /usuarios_con_rol/VF` (200 con lista vacía).
+
+#### Prerrequisitos (setup manual, una sola vez)
+
+1. **Neon**: crear el proyecto (PostgreSQL 18, región `aws-us-east-1`) y la base `neondb`;
+   anotar las cadenas **directas** con `sslmode=require` (dueño para migrar, `app_runtime` para runtime).
+2. **Artifact Registry**: crear el repo Docker `verdeazul` en `us-east1` (misma región que Cloud Run).
+3. **Cloud Run**: crear los dos servicios con las SA dedicadas (`verdeazul-app` y
+   `verdeazul-autorizador`); el job de migraciones usa `verdeazul-migrate`. Dar al autorizador
+   solo el permiso de invocación a `verdeazul-app`.
+4. **Secret Manager**: cargar los cinco secretos de la tabla anterior.
+5. **Base de datos**: crear `app_runtime` por SQL (ver *Dos roles*), ejecutar `db/roles_rls.sql`
+   con el rol dueño y `db/grant_after_migrate.sql` después de `migrate`.
+6. **GitHub**: registrar el pool/proveedor de WIF (`github` / `github-oidc`, condición
+   `assertion.repository == 'Guzroj/Proyecto2_Seguridad'`) y configurar los secrets/vars del
+   workflow (proyecto, región, repo, service accounts). Sin claves JSON de larga vida.
 
 ---
 

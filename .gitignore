@@ -1,7 +1,7 @@
 *.pdf
 *.zip
 
-# Secretos: nunca al repositorio
+# Secretos
 .env
 *.env
 !.env.example
