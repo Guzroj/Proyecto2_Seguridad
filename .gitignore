@@ -1,2 +1,19 @@
 *.pdf
 *.zip
+
+# Secretos
+.env
+*.env
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Editor
+.vscode/
+
+# Django
+staticfiles/
+db.sqlite3
