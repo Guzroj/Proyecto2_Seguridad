@@ -1,6 +1,6 @@
 # Imagen de la aplicación Django (Verdeazul).
 # Misma imagen para desarrollo local (docker compose) y Cloud Run.
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

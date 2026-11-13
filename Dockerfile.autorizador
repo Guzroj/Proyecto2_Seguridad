@@ -1,6 +1,6 @@
 # Imagen del motor de autorización (servicio privado de Cloud Run).
 # Servicio HTTP mínimo e independiente de Django: no lleva Django ni psycopg.
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
