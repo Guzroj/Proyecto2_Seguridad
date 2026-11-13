@@ -35,7 +35,7 @@ Comandos útiles:
 | Consola de Django | `docker compose exec web python manage.py shell` |
 | Consola SQL | `docker compose exec db psql -U verdeazul -d verdeazul` |
 | Correr pruebas | `docker compose exec web python manage.py test` |
-| Ver logs (eventos provisionales de bitácora) | `docker compose logs -f web` |
+| Ver logs (eventos de bitácora) | `docker compose logs -f web` |
 | Apagar | `docker compose down` |
 | Borrar la base local y empezar de cero | `docker compose down -v` |
 
@@ -137,18 +137,6 @@ el token OIDC que `verdeazul` pide al metadata server con `audience = AUTORIZADO
 `.github/dependabot.yml` mantiene actualizadas las dependencias (pip y Docker) con
 PRs automáticos, reduciendo la ventana de exposición a vulnerabilidades conocidas.
 
-#### Etiquetas de versión publicadas
-
-Cada publicación se registra acá. Completar una fila por imagen y versión desplegada:
-
-| Imagen | Etiqueta | Commit | Fecha |
-|---|---|---|---|
-| `app` | _v1.0.0_ | _pendiente_ | _pendiente_ |
-| `autorizador` | _v1.0.0_ | _pendiente_ | _pendiente_ |
-
-Nunca se publica solo `latest`: toda imagen desplegada lleva una etiqueta de versión
-(`vX.Y.Z`) junto con su `sha-<hash>`, para trazabilidad y rollback reproducible.
-
 #### Despliegue de validación actual
 
 | Recurso | Valor |
@@ -156,7 +144,7 @@ Nunca se publica solo `latest`: toda imagen desplegada lleva una etiqueta de ver
 | App pública | `https://verdeazul-444812071990.us-east1.run.app` |
 | Autorizador privado | `https://verdeazul-autorizador-444812071990.us-east1.run.app` |
 | Proyecto / región | `project-4d85c806-d471-4964-b73` / `us-east1` |
-| Imagen desplegada | `manual-202611121557` (validación manual; el pipeline usará `sha-<hash>`) |
+| Imagen desplegada | `manual-202611121557` (validación manual) |
 
 El autorizador quedó con `roles/run.invoker` solo para `verdeazul-app`. El path `/healthz`
 de FastAPI queda sombreado por el frontend de Cloud Run; para probar el motor usar
@@ -174,8 +162,9 @@ de FastAPI queda sombreado por el frontend de Cloud Run; para probar el motor us
 5. **Base de datos**: crear `app_runtime` por SQL (ver *Dos roles*), ejecutar `db/roles_rls.sql`
    con el rol dueño y `db/grant_after_migrate.sql` después de `migrate`.
 6. **GitHub**: registrar el pool/proveedor de WIF (`github` / `github-oidc`, condición
-   `assertion.repository == 'Guzroj/Proyecto2_Seguridad'`) y configurar los secrets/vars del
-   workflow (proyecto, región, repo, service accounts). Sin claves JSON de larga vida.
+   `assertion.repository == 'Guzroj/Proyecto2_Seguridad'`). Las variables del workflow
+   (proyecto, región, provider y service account) son opcionales: trae fallback para este
+   proyecto. Sin claves JSON de larga vida.
 
 ---
 
@@ -184,7 +173,7 @@ de FastAPI queda sombreado por el frontend de Cloud Run; para probar el motor us
 ```
 verdeazul/        configuración (settings lee TODO de variables de entorno)
 nucleo/           piezas compartidas: errores, vocabulario de acciones, ganchos, decorador transicion
-cuentas/          Usuario (O7a) — mínimo; Persona 3 agrega roles, estado, MFA
+cuentas/          Usuario (O7a) — autenticación básica
 catalogo/         Finca, Parcela, ParcelaVersion (O1a), DatosPropietario (O1b) + services.py
 mediciones/       Periodo (O2), Asignacion (O3), Medicion + MedicionActor (O4), Enmienda (O5)
   services.py     ÚNICA vía para cambiar estados (ninguna vista hace .save() directo)
@@ -194,7 +183,7 @@ mediciones/       Periodo (O2), Asignacion (O3), Medicion + MedicionActor (O4), 
 
 ---
 
-## 3. Contrato entre equipos
+## 3. Contrato de integración
 
 ### 3.1 Cómo se usa un servicio
 
@@ -210,9 +199,9 @@ Excepciones (`nucleo/errores.py`) y respuesta HTTP sugerida:
 
 | Excepción | Quién la lanza | HTTP |
 |---|---|---|
-| `AccesoDenegado` | motor de autorización (P3) | 403 |
-| `ReautenticacionRequerida` | motor (P3): solo falta MFA reciente | 401 + reto |
-| `FueraDeAlcance` | motor (P3) o servicio si el objeto no existe | 404 (RG3) |
+| `AccesoDenegado` | motor de autorización | 403 |
+| `ReautenticacionRequerida` | motor de autorización: solo falta MFA reciente | 401 + reto |
+| `FueraDeAlcance` | motor de autorización o servicio si el objeto no existe | 404 (RG3) |
 | `TransicionInvalida` | servicio: el estado no lo permite (H4, C13...) | 409 |
 | `SeparacionDeFunciones` | servicio: participó o es dueño (C2, C3, C19) | 403 |
 | `SinAsignacion` | servicio: técnico sin asignación vigente (C1) | 403 |
@@ -225,16 +214,15 @@ Toda negación se registra automáticamente en la bitácora con `resultado="DENE
 
 Se conectan en `settings.VERDEAZUL_GANCHOS` con la ruta de la función; no hay que tocar los servicios.
 
-| Gancho | Dueño | Firma | Qué hace |
-|---|---|---|---|
-| `autorizar` | **Persona 3** | `(usuario, accion, recurso, contexto) -> None` | Rol vigente, alcance ABAC, MFA, H1–H3. Lanza `AccesoDenegado`/`FueraDeAlcance`/`ReautenticacionRequerida` si niega. |
-| `usuarios_con_rol` | **Persona 3** | `(rol: str) -> QuerySet[Usuario]` | Usuarios activos con el rol vigente (`"TC"`, `"VF"`, ...). |
-| `registrar_evento` | **Persona 4** | `(*, actor, accion, recurso_tipo, recurso_id, resultado, antes, despues, detalle)` | Bitácora encadenada. Se llama dentro de la transacción. |
-| `on_medicion_aprobada` | **Persona 4** | `(medicion) -> None` | Emitir y firmar el certificado. Corre en la transacción de aprobación con la medición bloqueada; si lanza excepción, la aprobación se revierte. Si `medicion.version_de` no es `None`, aplicar P2. |
+| Gancho | Firma | Qué hace |
+|---|---|---|
+| `autorizar` | `(usuario, accion, recurso, contexto) -> None` | Rol vigente, alcance ABAC, MFA, H1–H3. Lanza `AccesoDenegado`/`FueraDeAlcance`/`ReautenticacionRequerida` si niega. |
+| `usuarios_con_rol` | `(rol: str) -> QuerySet[Usuario]` | Usuarios activos con el rol vigente (`"TC"`, `"VF"`, ...). |
+| `registrar_evento` | `(*, actor, accion, recurso_tipo, recurso_id, resultado, antes, despues, detalle)` | Bitácora encadenada. Se llama dentro de la transacción. |
+| `on_medicion_aprobada` | `(medicion) -> None` | Emitir y firmar el certificado. Corre en la transacción de aprobación con la medición bloqueada; si lanza excepción, la aprobación se revierte. Si `medicion.version_de` no es `None`, tratar como versión enmendada. |
 
-Implementaciones provisionales mientras tanto: `autorizar` **niega todo** (fallo cerrado), salvo
-con `DEBUG=true` en local; `usuarios_con_rol` usa Groups de Django con el nombre del rol;
-los eventos se escriben en el log.
+Comportamiento actual: `autorizar` **niega todo** (fallo cerrado), salvo con `DEBUG=true` en
+local; `usuarios_con_rol` usa Groups de Django con el nombre del rol; los eventos se escriben en el log.
 
 ### 3.3 Vocabulario de acciones (`nucleo/acciones.py`)
 
@@ -280,25 +268,11 @@ propuestos, `estado` (`SOLICITADA`/`AUTORIZADA`/`RECHAZADA`/`APLICADA`/`DESCARTA
 
 ## 4. Decisiones de implementación y desviaciones respecto a la Parte 1
 
-*(Insumo para la sección "Desviaciones" del informe.)*
-
 | # | Decisión | Por qué | Implicación de seguridad |
 |---|---|---|---|
 | D1 | **Cálculo de CO2**: ecuación pantropical de Chave et al. (2014), `AGB = 0.0673·(ρ·D²·H)^0.976` kg por árbol, ρ = 0.6 g/cm³; carbono = 47 % (IPCC 2006); CO2 = C·44/12. Árbol promedio × número de árboles. | La Parte 1 solo dice "el servidor recalcula el carbono con los datos crudos", sin fórmula. | El cliente nunca envía toneladas; el servidor las recalcula al crear, modificar y **otra vez al aprobar**. Simplificación: árbol promedio y stock en pie, no incremento. |
-| D2 | Geometría como **GeoJSON validado** (lista blanca) en vez de **PostGIS**. | PostGIS exige GDAL en la imagen. | **PENDIENTE**: no se valida traslape entre parcelas (parte de C20). Se puede activar PostGIS después (Neon lo soporta). |
-| D3 | Sin PWA sin conexión ni paquetes de trabajo firmados. | Alcance de la Parte 2 (el enunciado permite recortar funcionalidad accesoria). | C13 `TV` no verifica paquetes vigentes; C16 (sincronización final) queda sin flujo. Riesgo R6 no aplica al no haber captura offline. |
+| D2 | Geometría como **GeoJSON validado** (lista blanca) en vez de **PostGIS**. | PostGIS exige GDAL en la imagen. | Limitación actual: no se valida traslape entre parcelas (parte de C20). |
+| D3 | Sin PWA sin conexión ni paquetes de trabajo firmados. | La captura offline y los paquetes firmados no forman parte de la implementación. | C13 `TV` no verifica paquetes vigentes; C16 (sincronización final) queda sin flujo. Riesgo R6 no aplica al no haber captura offline. |
 | D4 | Verificador **nuevo** en cada envío. | Consecuencia de C2: quien devolvió queda en actores(m) y no puede aprobar. | Ojos frescos tras cada devolución; exige al menos 3 VF activos para un ciclo enviar→devolver→reenviar→enmendar. |
-| D5 | On-premise → Cloud Run + Neon; OpenBao → Secret Manager. | Exigencia del enunciado de la Parte 2. | *(Persona 1/4 completan.)* |
+| D5 | On-premise → Cloud Run + Neon; OpenBao → Secret Manager. | Migración a servicios gestionados. | Secretos fuera de la imagen y del repo; TLS terminado por Cloud Run; identidad de servicio vía WIF. |
 | D6 | Django corre dentro de Docker también en desarrollo; Python 3.12. | App Control de Windows bloquea `psycopg`; misma versión que producción. | Paridad desarrollo–producción. |
-
----
-
-## 5. Avance de Persona 2
-
-- [x] Esqueleto Django, settings sin secretos, Docker + compose
-- [x] Modelos y restricciones (catálogo, períodos, asignaciones, mediciones, actores, enmiendas)
-- [x] Servicios con todas las transiciones + ganchos + selectores + cálculo de CO2
-- [ ] Disparadores de Postgres (H4, `MedicionActor` solo inserción, versiones de geometría inmutables)
-- [ ] Comando `seed` con un usuario por rol (credenciales de prueba)
-- [ ] Pruebas automatizadas de los casos V1–V18 que tocan el dominio
-- [ ] PostGIS para traslape de parcelas (D2)
