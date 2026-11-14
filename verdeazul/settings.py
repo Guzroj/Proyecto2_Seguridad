@@ -50,6 +50,8 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "allauth",
+    "allauth.account",
     # Apps del proyecto
     "cuentas",
     "catalogo",
@@ -65,6 +67,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "cuentas.rls.ContextoRLSMiddleware",  # sujeto de RLS desde la sesión del servidor
+    "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -119,6 +123,19 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
+
+# ---------------------------------------------------------------------------
+# Autenticación: django-allauth, solo con nombre de usuario y sin registro público
+# ---------------------------------------------------------------------------
+AUTHENTICATION_BACKENDS = ["cuentas.backends.BackendRLS"]
+LOGIN_URL = "account_login"
+LOGIN_REDIRECT_URL = "inicio"
+ACCOUNT_ADAPTER = "cuentas.adaptador.AdaptadorCuentas"
+ACCOUNT_LOGIN_METHODS = {"username"}
+ACCOUNT_SIGNUP_FIELDS = ["username*", "password1*"]
+ACCOUNT_EMAIL_VERIFICATION = "none"
+ACCOUNT_SESSION_REMEMBER = False
+ACCOUNT_LOGOUT_REDIRECT_URL = "account_login"
 
 # ---------------------------------------------------------------------------
 # Sesión y cookies (Arquitectura §4.4). Persona 3 completa inactividad por rol.
