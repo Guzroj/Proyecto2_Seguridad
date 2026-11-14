@@ -23,6 +23,8 @@ from django.contrib.auth.models import AbstractUser, UserManager
 from django.db import models
 from django.db.models import Q
 
+from autorizacion import roles
+
 
 class EstadoCuenta(models.TextChoices):
     PENDIENTE = "PENDIENTE", "Pendiente"
@@ -69,3 +71,54 @@ class Usuario(AbstractUser):
         if update_fields is not None and "estado" in update_fields:
             kwargs["update_fields"] = {*update_fields, "is_active"}
         super().save(*args, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# O7b · Pertenencia usuario–rol con vigencia
+# ---------------------------------------------------------------------------
+class Rol(models.TextChoices):
+    TC = roles.TC, roles.ROLES[roles.TC]
+    VF = roles.VF, roles.ROLES[roles.VF]
+    GC = roles.GC, roles.ROLES[roles.GC]
+    AC = roles.AC, roles.ROLES[roles.AC]
+    AE = roles.AE, roles.ROLES[roles.AE]
+    PF = roles.PF, roles.ROLES[roles.PF]
+
+
+class RolUsuario(models.Model):
+    """
+    Un usuario tiene el rol `rol` durante [vigente_desde, vigente_hasta).
+    vigente_hasta NULL = sin fin. Nunca se borra: retirar un rol cierra su
+    vigencia, y el historial queda (p. ej. quien fue TC y hoy es VF, V5).
+    Solo representa roles con efecto; las solicitudes de GC/AE pendientes de
+    aprobación (C7) se guardan aparte.
+    """
+
+    usuario = models.ForeignKey(Usuario, on_delete=models.PROTECT, related_name="roles")
+    rol = models.CharField(max_length=2, choices=Rol.choices)
+    vigente_desde = models.DateTimeField()
+    vigente_hasta = models.DateTimeField(null=True, blank=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "rol de usuario"
+        verbose_name_plural = "roles de usuario"
+        ordering = ["usuario", "vigente_desde"]
+        indexes = [models.Index(fields=["rol", "vigente_hasta"], name="rolusuario_rol_hasta")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["usuario", "rol"],
+                condition=Q(vigente_hasta__isnull=True),
+                name="rolusuario_uno_abierto",
+            ),
+            models.CheckConstraint(
+                condition=Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gt=models.F("vigente_desde")),
+                name="rolusuario_vigencia_coherente",
+            ),
+            models.CheckConstraint(
+                condition=Q(rol__in=list(roles.ROLES)), name="rolusuario_rol_conocido"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.usuario} · {self.rol}"

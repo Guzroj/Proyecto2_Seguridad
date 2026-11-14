@@ -1,10 +1,20 @@
+from datetime import timedelta
+
 from django.contrib.auth import authenticate
 from django.db import IntegrityError, transaction
 from django.test import TestCase
+from django.utils import timezone
 
+from autorizacion import roles
 from cuentas import services
-from cuentas.models import EstadoCuenta, Usuario
-from nucleo.errores import FueraDeAlcance, TransicionInvalida
+from cuentas.models import EstadoCuenta, Rol, RolUsuario, Usuario
+from cuentas.selectores import roles_vigentes, tiene_rol
+from nucleo.errores import (
+    DatoInvalido,
+    FueraDeAlcance,
+    SeparacionDeFunciones,
+    TransicionInvalida,
+)
 
 CLAVE = "clave-de-prueba-larga-123"
 
@@ -127,3 +137,166 @@ class RestriccionBaseDeDatosTests(TestCase):
         cuenta.save()
         cuenta.refresh_from_db()
         self.assertFalse(cuenta.is_active)
+
+
+# ===========================================================================
+# Paso 2 · Roles con vigencia y pares excluyentes
+# ===========================================================================
+class RolesBaseTests(TestCase):
+    def setUp(self):
+        self.ahora = timezone.now()
+        self.u = crear_cuenta("rosa", EstadoCuenta.ACTIVA)
+
+    def hace(self, **kw):
+        return self.ahora - timedelta(**kw)
+
+    def en(self, **kw):
+        return self.ahora + timedelta(**kw)
+
+
+class RolChoicesTests(TestCase):
+    def test_choices_coinciden_con_el_modulo_puro(self):
+        self.assertEqual(set(Rol.values), set(roles.ROLES))
+
+
+class RolesVigentesTests(RolesBaseTests):
+    def test_sin_roles(self):
+        self.assertEqual(roles_vigentes(self.u), set())
+
+    def test_rol_abierto_es_vigente(self):
+        services.agregar_rol(self.u, "TC")
+        self.assertEqual(roles_vigentes(self.u), {"TC"})
+        self.assertTrue(tiene_rol(self.u.pk, "TC"))
+
+    def test_rol_futuro_no_es_vigente_hoy(self):
+        services.agregar_rol(self.u, "GC", desde=self.en(days=1))
+        self.assertEqual(roles_vigentes(self.u), set())
+        self.assertEqual(roles_vigentes(self.u, en=self.en(days=2)), {"GC"})
+
+    def test_rol_vencido_no_es_vigente(self):
+        services.agregar_rol(self.u, "PF", desde=self.hace(days=10), hasta=self.hace(days=1))
+        self.assertEqual(roles_vigentes(self.u), set())
+        self.assertEqual(roles_vigentes(self.u, en=self.hace(days=5)), {"PF"})
+
+    def test_limite_hasta_es_exclusivo(self):
+        fin = self.en(hours=1)
+        services.agregar_rol(self.u, "PF", desde=self.hace(hours=1), hasta=fin)
+        self.assertEqual(roles_vigentes(self.u, en=fin - timedelta(microseconds=1)), {"PF"})
+        self.assertEqual(roles_vigentes(self.u, en=fin), set())
+
+    def test_varios_roles_compatibles(self):
+        services.agregar_rol(self.u, "TC")
+        services.agregar_rol(self.u, "PF")
+        self.assertEqual(roles_vigentes(self.u), {"TC", "PF"})
+
+    def test_no_mezcla_usuarios(self):
+        otro = crear_cuenta("otro", EstadoCuenta.ACTIVA)
+        services.agregar_rol(otro, "GC")
+        self.assertEqual(roles_vigentes(self.u), set())
+
+
+class AgregarRolTests(RolesBaseTests):
+    def test_rol_desconocido(self):
+        with self.assertRaises(DatoInvalido):
+            services.agregar_rol(self.u, "ROOT")
+
+    def test_vigencia_invertida(self):
+        with self.assertRaises(DatoInvalido):
+            services.agregar_rol(self.u, "TC", desde=self.ahora, hasta=self.hace(days=1))
+
+    def test_duplicado_se_niega(self):
+        services.agregar_rol(self.u, "TC")
+        with self.assertRaises(TransicionInvalida):
+            services.agregar_rol(self.u, "TC")
+        self.assertEqual(RolUsuario.objects.filter(usuario=self.u).count(), 1)
+
+    def test_mismo_rol_en_tramos_que_no_se_cruzan(self):
+        services.agregar_rol(self.u, "AE", desde=self.hace(days=40), hasta=self.hace(days=20))
+        services.agregar_rol(self.u, "AE", desde=self.hace(days=10), hasta=self.en(days=10))
+        self.assertEqual(roles_vigentes(self.u), {"AE"})
+
+    def test_cada_par_excluyente_se_niega_en_ambos_sentidos(self):
+        for i, par in enumerate(roles.EXCLUYENTES):
+            a, b = sorted(par)
+            for primero, segundo in ((a, b), (b, a)):
+                with self.subTest(primero=primero, segundo=segundo):
+                    u = crear_cuenta(f"e{i}{primero}", EstadoCuenta.ACTIVA)
+                    services.agregar_rol(u, primero)
+                    with self.assertRaises(SeparacionDeFunciones):
+                        services.agregar_rol(u, segundo)
+                    self.assertEqual(roles_vigentes(u), {primero})
+
+    def test_pf_convive_con_cualquier_rol(self):
+        for r in ("TC", "VF", "GC", "AC", "AE"):
+            with self.subTest(rol=r):
+                u = crear_cuenta(f"pf{r}", EstadoCuenta.ACTIVA)
+                services.agregar_rol(u, "PF")
+                services.agregar_rol(u, r)
+                self.assertEqual(roles_vigentes(u), {"PF", r})
+
+    def test_excluyente_futuro_tambien_se_niega(self):
+        services.agregar_rol(self.u, "GC", desde=self.en(days=5))
+        with self.assertRaises(SeparacionDeFunciones):
+            services.agregar_rol(self.u, "AC")
+
+    def test_excluyente_que_se_cruza_parcialmente_se_niega(self):
+        services.agregar_rol(self.u, "TC", desde=self.hace(days=10), hasta=self.en(days=2))
+        with self.assertRaises(SeparacionDeFunciones):
+            services.agregar_rol(self.u, "VF", desde=self.en(days=1))
+
+    def test_excluyente_terminado_ya_no_choca(self):
+        # V5: quien fue TC puede ser VF después; C2 se encarga por objeto.
+        services.agregar_rol(self.u, "TC", desde=self.hace(days=30))
+        services.terminar_rol(self.u, "TC")
+        services.agregar_rol(self.u, "VF")
+        self.assertEqual(roles_vigentes(self.u), {"VF"})
+
+    def test_excluyente_que_empieza_al_terminar_el_otro(self):
+        fin = self.en(days=3)
+        services.agregar_rol(self.u, "TC", hasta=fin)
+        services.agregar_rol(self.u, "VF", desde=fin)
+        self.assertEqual(roles_vigentes(self.u), {"TC"})
+        self.assertEqual(roles_vigentes(self.u, en=fin), {"VF"})
+
+    def test_cuenta_inexistente(self):
+        with self.assertRaises(FueraDeAlcance):
+            services.agregar_rol(999_999, "TC")
+
+
+class TerminarRolTests(RolesBaseTests):
+    def test_termina_y_conserva_historial(self):
+        services.agregar_rol(self.u, "TC", desde=self.hace(days=1))
+        p = services.terminar_rol(self.u, "TC")
+        self.assertIsNotNone(p.vigente_hasta)
+        self.assertEqual(roles_vigentes(self.u), set())
+        self.assertEqual(RolUsuario.objects.filter(usuario=self.u, rol="TC").count(), 1)
+
+    def test_sin_rol_vigente(self):
+        with self.assertRaises(TransicionInvalida):
+            services.terminar_rol(self.u, "TC")
+
+    def test_rol_futuro_no_se_termina_como_vigente(self):
+        services.agregar_rol(self.u, "GC", desde=self.en(days=1))
+        with self.assertRaises(TransicionInvalida):
+            services.terminar_rol(self.u, "GC")
+
+    def test_rol_desconocido(self):
+        with self.assertRaises(DatoInvalido):
+            services.terminar_rol(self.u, "ROOT")
+
+
+class RolesBaseDeDatosTests(RolesBaseTests):
+    def test_la_base_rechaza_dos_abiertos_del_mismo_rol(self):
+        RolUsuario.objects.create(usuario=self.u, rol="TC", vigente_desde=self.ahora)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            RolUsuario.objects.create(usuario=self.u, rol="TC", vigente_desde=self.en(days=1))
+
+    def test_la_base_rechaza_vigencia_invertida(self):
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            RolUsuario.objects.create(
+                usuario=self.u, rol="TC", vigente_desde=self.ahora, vigente_hasta=self.hace(days=1)
+            )
+
+    def test_la_base_rechaza_rol_desconocido(self):
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            RolUsuario.objects.create(usuario=self.u, rol="XX", vigente_desde=self.ahora)
