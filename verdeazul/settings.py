@@ -70,6 +70,7 @@ MIDDLEWARE = [
     "cuentas.rls.ContextoRLSMiddleware",  # sujeto de RLS desde la sesión del servidor
     "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "cuentas.sesion.ControlSesionMiddleware",  # inactividad por rol, 10 h, sesiones cerradas
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
@@ -138,7 +139,8 @@ ACCOUNT_SESSION_REMEMBER = False
 ACCOUNT_LOGOUT_REDIRECT_URL = "account_login"
 
 # ---------------------------------------------------------------------------
-# Sesión y cookies (Arquitectura §4.4). Persona 3 completa inactividad por rol.
+# Sesión y cookies (Arquitectura §4.4). Inactividad por rol y máximo absoluto:
+# cuentas.sesion.ControlSesionMiddleware.
 # ---------------------------------------------------------------------------
 SESSION_ENGINE = "django.contrib.sessions.backends.db"  # del lado del servidor, revocable
 SESSION_COOKIE_HTTPONLY = True

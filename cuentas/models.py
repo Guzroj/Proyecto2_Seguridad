@@ -122,3 +122,49 @@ class RolUsuario(models.Model):
 
     def __str__(self) -> str:
         return f"{self.usuario} · {self.rol}"
+
+
+# ---------------------------------------------------------------------------
+# O7a · Sesiones propias
+# ---------------------------------------------------------------------------
+class MotivoCierre(models.TextChoices):
+    SALIDA = "SALIDA", "Cerró sesión"
+    INACTIVIDAD = "INACTIVIDAD", "Inactividad"
+    MAXIMO = "MAXIMO", "Máximo absoluto de 10 h"
+    FORZADO = "FORZADO", "Cierre por cambio de privilegios o baja"
+    INVALIDA = "INVALIDA", "Sesión sin registro válido"
+
+
+class Sesion(models.Model):
+    """
+    Registro del lado del servidor de cada sesión iniciada. Una petición
+    autenticada solo se acepta si su sesión tiene aquí una fila abierta; así,
+    cerrar las sesiones de un usuario (C7, C15) es marcar sus filas como cerradas.
+    Se guarda el hash SHA-256 de la clave de sesión, nunca la clave.
+    """
+
+    usuario = models.ForeignKey(Usuario, on_delete=models.PROTECT, related_name="sesiones")
+    clave_hash = models.CharField(max_length=64)
+    iniciada_en = models.DateTimeField()
+    ultima_actividad = models.DateTimeField()
+    cerrada_en = models.DateTimeField(null=True, blank=True)
+    motivo_cierre = models.CharField(max_length=12, choices=MotivoCierre.choices, blank=True)
+
+    class Meta:
+        verbose_name = "sesión"
+        verbose_name_plural = "sesiones"
+        ordering = ["-iniciada_en"]
+        indexes = [models.Index(fields=["usuario", "cerrada_en"], name="sesion_usuario_abierta")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["clave_hash"], condition=Q(cerrada_en__isnull=True), name="sesion_clave_abierta_unica"
+            ),
+            models.CheckConstraint(
+                condition=Q(cerrada_en__isnull=True, motivo_cierre="")
+                | (Q(cerrada_en__isnull=False) & ~Q(motivo_cierre="")),
+                name="sesion_cierre_con_motivo",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Sesión de {self.usuario} desde {self.iniciada_en:%Y-%m-%d %H:%M}"
