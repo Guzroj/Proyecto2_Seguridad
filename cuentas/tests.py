@@ -300,3 +300,104 @@ class RolesBaseDeDatosTests(RolesBaseTests):
     def test_la_base_rechaza_rol_desconocido(self):
         with self.assertRaises(IntegrityError), transaction.atomic():
             RolUsuario.objects.create(usuario=self.u, rol="XX", vigente_desde=self.ahora)
+
+
+# ===========================================================================
+# Paso 3 · usuarios_con_rol() conectado al gancho
+# ===========================================================================
+class UsuariosConRolTests(RolesBaseTests):
+    def setUp(self):
+        super().setUp()
+        from django.contrib.auth.models import Group
+
+        from nucleo import ganchos
+
+        self.ganchos = ganchos
+        self.Group = Group
+
+    def ids(self, rol):
+        return set(self.ganchos.usuarios_con_rol(rol).values_list("pk", flat=True))
+
+    def test_el_gancho_apunta_a_la_implementacion_real(self):
+        from django.conf import settings
+
+        self.assertEqual(settings.VERDEAZUL_GANCHOS["usuarios_con_rol"], "cuentas.roles.usuarios_con_rol")
+
+    def test_devuelve_activos_con_rol_vigente(self):
+        services.agregar_rol(self.u, "VF")
+        self.assertEqual(self.ids("VF"), {self.u.pk})
+        self.assertEqual(self.ids("TC"), set())
+
+    def test_excluye_cuentas_que_no_estan_activas(self):
+        for estado in (EstadoCuenta.PENDIENTE, EstadoCuenta.EN_BAJA, EstadoCuenta.INACTIVA):
+            with self.subTest(estado=estado):
+                u = crear_cuenta(f"vf-{estado.lower()}", EstadoCuenta.ACTIVA if estado != EstadoCuenta.PENDIENTE else None)
+                services.agregar_rol(u, "VF")
+                if estado != EstadoCuenta.PENDIENTE:
+                    services.cambiar_estado(u, estado)
+                self.assertNotIn(u.pk, self.ids("VF"))
+
+    def test_excluye_roles_futuros_y_vencidos(self):
+        futuro = crear_cuenta("futuro", EstadoCuenta.ACTIVA)
+        vencido = crear_cuenta("vencido", EstadoCuenta.ACTIVA)
+        services.agregar_rol(futuro, "GC", desde=self.en(days=1))
+        services.agregar_rol(vencido, "GC", desde=self.hace(days=9), hasta=self.hace(days=1))
+        self.assertEqual(self.ids("GC"), set())
+
+    def test_ignora_los_groups_de_django(self):
+        grupo = self.Group.objects.create(name="VF")
+        self.u.groups.add(grupo)
+        self.assertEqual(self.ids("VF"), set())
+
+    def test_rol_desconocido_devuelve_vacio(self):
+        services.agregar_rol(self.u, "TC")
+        for rol in ("XX", "tc", "", None):
+            with self.subTest(rol=rol):
+                self.assertFalse(self.ganchos.usuarios_con_rol(rol).exists())
+
+    def test_es_un_queryset_encadenable_sin_duplicados(self):
+        otro = crear_cuenta("otro-vf", EstadoCuenta.ACTIVA)
+        services.agregar_rol(self.u, "VF", desde=self.hace(days=20), hasta=self.hace(days=10))
+        services.agregar_rol(self.u, "VF", desde=self.hace(days=5))
+        services.agregar_rol(otro, "VF")
+        qs = self.ganchos.usuarios_con_rol("VF")
+        self.assertEqual(qs.count(), 2)
+        self.assertEqual(list(qs.exclude(pk__in={otro.pk}).values_list("pk", flat=True)), [self.u.pk])
+        self.assertTrue(qs.filter(pk=otro.pk).exists())
+
+    def test_rol_terminado_sale_de_la_lista(self):
+        services.agregar_rol(self.u, "TC", desde=self.hace(days=1))
+        services.terminar_rol(self.u, "TC")
+        self.assertEqual(self.ids("TC"), set())
+
+
+class IntegracionCatalogoTests(TestCase):
+    """crear_finca exige que el propietario tenga rol PF vía usuarios_con_rol."""
+
+    def setUp(self):
+        self.ac = crear_cuenta("ac", EstadoCuenta.ACTIVA)
+        services.agregar_rol(self.ac, "AC")
+        self.dueno = crear_cuenta("dueno", EstadoCuenta.ACTIVA)
+
+    def crear(self):
+        from django.test import override_settings
+
+        from catalogo import services as catalogo
+
+        # El motor aún no existe (paso 13): se activa explícitamente el modo permisivo.
+        with override_settings(AUTORIZACION_PROVISIONAL_PERMISIVA=True):
+            return catalogo.crear_finca(self.ac, "La Esperanza", "San Carlos", self.dueno)
+
+    def test_propietario_sin_rol_pf_se_niega(self):
+        with self.assertRaises(DatoInvalido):
+            self.crear()
+
+    def test_propietario_con_rol_pf_se_acepta(self):
+        services.agregar_rol(self.dueno, "PF")
+        self.assertEqual(self.crear().propietario, self.dueno)
+
+    def test_propietario_pf_con_cuenta_inactiva_se_niega(self):
+        services.agregar_rol(self.dueno, "PF")
+        services.cambiar_estado(self.dueno, EstadoCuenta.INACTIVA)
+        with self.assertRaises(DatoInvalido):
+            self.crear()

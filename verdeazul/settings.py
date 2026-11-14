@@ -158,7 +158,7 @@ USE_TZ = True
 # ---------------------------------------------------------------------------
 VERDEAZUL_GANCHOS = {
     # "autorizar": "autorizacion.motor.autorizar",
-    # "usuarios_con_rol": "cuentas.roles.usuarios_con_rol",
+    "usuarios_con_rol": "cuentas.roles.usuarios_con_rol",
     # "registrar_evento": "bitacora.servicios.registrar_evento",
     # "on_medicion_aprobada": "certificados.servicios.emitir",
 }
