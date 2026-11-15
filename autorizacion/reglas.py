@@ -69,6 +69,7 @@ class Solicitud:
     accion: str
     recurso: dict
     contexto: dict
+    ventana: dict | None = None  # ventana de auditoría del sujeto (solo AE, C5)
 
     @property
     def mfa(self) -> bool:
@@ -139,6 +140,9 @@ def leer_solicitud(datos) -> Solicitud:
         raise AtributoFaltante("sujeto.roles")
     if mfa_edad is not None and (isinstance(mfa_edad, bool) or not isinstance(mfa_edad, (int, float))):
         raise AtributoFaltante("sujeto.mfa_edad")
+    ventana = sujeto.get("ventana")
+    if ventana is not None and not isinstance(ventana, dict):
+        raise AtributoFaltante("sujeto.ventana")
     if not isinstance(accion, str) or not accion:
         raise AtributoFaltante("accion")
     if recurso is not None and not isinstance(recurso, dict):
@@ -148,7 +152,7 @@ def leer_solicitud(datos) -> Solicitud:
     return Solicitud(
         sujeto_id=sujeto_id, estado=estado, roles=frozenset(r for r in roles if r in ROLES),
         mfa_edad=None if mfa_edad is None else float(mfa_edad), accion=accion,
-        recurso=recurso or {}, contexto=contexto,
+        recurso=recurso or {}, contexto=contexto, ventana=ventana,
     )
 
 

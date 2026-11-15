@@ -69,11 +69,25 @@ def atributos_sujeto(usuario) -> dict:
 
     usuario_id = getattr(usuario, "pk", usuario)
     estado = Usuario.objects.filter(pk=usuario_id).values_list("estado", flat=True).first()
+    roles = sorted(roles_vigentes(usuario_id)) if estado else []
+    datos = {"id": usuario_id, "estado": estado or "", "roles": roles, "mfa_edad": _edad_mfa(usuario_id)}
+    if "AE" in roles:
+        datos["ventana"] = _ventana_del_auditor(usuario_id)
+    return datos
+
+
+def _ventana_del_auditor(usuario_id) -> dict | None:
+    """C5: la ventana del AE y lo que hace falta para evaluarla (U_GC al aprobar)."""
+    from cuentas.models import VentanaAuditoria
+    from cuentas.selectores import hoy, tiene_rol
+
+    v = VentanaAuditoria.objects.filter(auditor_id=usuario_id).first()
+    if v is None:
+        return None
     return {
-        "id": usuario_id,
-        "estado": estado or "",
-        "roles": sorted(roles_vigentes(usuario_id)) if estado else [],
-        "mfa_edad": _edad_mfa(usuario_id),
+        "estado": v.estado, "inicio": v.inicio.isoformat(), "fin": v.fin.isoformat(), "hoy": hoy().isoformat(),
+        "aprobada_por_gc": bool(v.aprobada_por_id and tiene_rol(v.aprobada_por_id, "GC", en=v.aprobada_en)),
+        "aprobada_por_distinto": bool(v.aprobada_por_id and v.aprobada_por_id != v.solicitada_por_id),
     }
 
 
@@ -186,6 +200,34 @@ def _enmienda(e) -> dict:
     }
 
 
+def _solicitud_rol(r) -> dict:
+    from cuentas.selectores import roles_vigentes
+
+    return {"usuario": r.usuario_id, "usuario_roles": sorted(roles_vigentes(r.usuario_id)), "rol": r.rol,
+            "tipo": r.tipo, "estado": r.estado, "solicitada_por": r.solicitada_por_id}
+
+
+def _ventana(v) -> dict:
+    return {"estado": v.estado, "inicio": v.inicio.isoformat(), "fin": v.fin.isoformat(),
+            "auditor": v.auditor_id, "solicitada_por": v.solicitada_por_id}
+
+
+def _restablecimiento(r) -> dict:
+    return {"usuario": r.usuario_id, "estado": r.estado, "solicitado_por": r.solicitado_por_id}
+
+
+def _alerta(a) -> dict:
+    return {"sujeto": a.sujeto_id, "control": a.control, "estado": a.estado}
+
+
+def _sesion(r) -> dict:
+    return {"usuario": r.usuario_id}
+
+
+def _dispositivo(d) -> dict:
+    return {"responsable": d.responsable_id, "estado": d.estado}
+
+
 ATRIBUTOS = {
     "usuario": _usuario,
     "finca": _finca,
@@ -195,6 +237,12 @@ ATRIBUTOS = {
     "asignacion": _asignacion,
     "medicion": _medicion,
     "enmienda": _enmienda,
+    "solicitudrol": _solicitud_rol,
+    "ventanaauditoria": _ventana,
+    "restablecimientofactor": _restablecimiento,
+    "alerta": _alerta,
+    "sesion": _sesion,
+    "dispositivocampo": _dispositivo,
 }
 
 
@@ -206,9 +254,18 @@ def _contexto_medicion_crear(recurso, contexto: dict) -> dict:
     return {"asignados_vigentes": _asignados_vigentes(recurso.finca_id, getattr(periodo, "pk", periodo))}
 
 
+def _contexto_factor_registrar(recurso, contexto: dict) -> dict:
+    """C21: si la cuenta ya tiene un segundo factor, registrar otro exige mfa."""
+    from allauth.mfa.models import Authenticator
+
+    usuario_id = getattr(recurso, "pk", None)
+    return {"tiene_factor": usuario_id is not None and Authenticator.objects.filter(user_id=usuario_id).exists()}
+
+
 # Atributos que dependen de la combinación recurso + contexto de una acción concreta.
 CONTEXTO_POR_ACCION = {
     "medicion:crear": _contexto_medicion_crear,
+    "factor:registrar": _contexto_factor_registrar,
 }
 
 

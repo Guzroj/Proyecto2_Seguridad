@@ -39,6 +39,7 @@ class Sujeto(BaseModel):
     estado: str = Field(max_length=10)
     roles: list[str] = Field(max_length=6)
     mfa_edad: float | None = None
+    ventana: dict[str, Any] | None = None  # solo AE (C5): fechas, estado y quién aprobó
 
 
 class SolicitudAutorizacion(BaseModel):

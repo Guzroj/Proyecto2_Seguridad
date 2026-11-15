@@ -335,3 +335,147 @@ class C16Tests(Base):
                 self.assertDecision(decidir("medicion:sincronizar", "GC", None, malo), NIEGA, "C16")
         self.assertDecision(decidir("medicion:sincronizar", "GC", None, {**ctx, "registro": {"firma_valida": True}}),
                             NIEGA, "RG5")
+
+
+# ===========================================================================
+# Paso 14c · O7–O9
+# ===========================================================================
+def cuenta(id_=OTRO, estado="ACTIVA", roles=("PF",)):
+    return {"tipo": "usuario", "id": id_, "estado": estado, "roles": list(roles)}
+
+
+class C5Tests(Base):
+    def ventana(self, **cambios):
+        base = {"estado": "APROBADA", "inicio": "2026-11-01", "fin": "2026-11-20", "hoy": "2026-11-15",
+                "aprobada_por_gc": True, "aprobada_por_distinto": True}
+        return {**base, **cambios}
+
+    def ae(self, accion, ventana):
+        return reglas.decidir({"sujeto": {"id": S, "estado": "ACTIVA", "roles": ["AE"], "ventana": ventana},
+                               "accion": accion, "recurso": {"tipo": "x", "id": 1}, "contexto": {}})
+
+    def test_lee_y_exporta_todas_las_columnas_dentro_de_la_ventana(self):
+        for accion in ("finca:leer", "propietario:exportar", "medicion:leer", "certificado:exportar",
+                       "cuenta:leer", "factor:leer", "bitacora:exportar", "alerta:leer"):
+            with self.subTest(accion=accion):
+                self.assertDecision(self.ae(accion, self.ventana()), CONCEDE, "C5")
+
+    def test_v9_fuera_de_la_ventana_o_mal_aprobada(self):
+        casos = {"un día después": self.ventana(hoy="2026-11-21"), "antes": self.ventana(hoy="2026-10-31"),
+                 "pendiente": self.ventana(estado="PENDIENTE"), "más de 30 días": self.ventana(fin="2026-12-15"),
+                 "no la aprobó un GC": self.ventana(aprobada_por_gc=False),
+                 "la aprobó quien la pidió": self.ventana(aprobada_por_distinto=False), "sin ventana": None}
+        for nombre, ventana in casos.items():
+            with self.subTest(caso=nombre):
+                self.assertDecision(self.ae("medicion:leer", ventana), NIEGA, "C5")
+        self.assertDecision(self.ae("medicion:leer", self.ventana(hoy="15/11/2026")), NIEGA, "RG5")
+
+    def test_v9_cualquier_otra_operacion_se_niega(self):
+        for accion in ("medicion:devolver", "medicion:aprobar", "cuenta:crear", "alerta:resolver"):
+            with self.subTest(accion=accion):
+                self.assertDecision(self.ae(accion, self.ventana()), NIEGA, "RG1")
+
+
+class C7Tests(Base):
+    def test_asignar(self):
+        self.assertDecision(decidir("rol:asignar", "AC", cuenta(), {"rol": "TC"}), CONCEDE, "C7")
+        negadas = [
+            (cuenta(roles=["TC"]), "VF"),            # V10: TC ⊕ VF
+            (cuenta(id_=S, roles=["AC"]), "GC"),     # V10: a sí mismo
+            (cuenta(estado="PENDIENTE"), "TC"),
+            (cuenta(roles=["AE"]), "AC"),
+        ]
+        for destino_, rol in negadas:
+            with self.subTest(destino=destino_, rol=rol):
+                self.assertDecision(decidir("rol:asignar", "AC", destino_, {"rol": rol}), NIEGA, "C7")
+        self.assertDecision(decidir("rol:asignar", "AC", cuenta()), NIEGA, "RG5")
+
+    def test_retirar(self):
+        self.assertDecision(decidir("rol:retirar", "AC", cuenta(), {"rol": "PF"}), CONCEDE)
+        self.assertDecision(decidir("rol:retirar", "AC", cuenta(id_=S), {"rol": "AC"}), NIEGA, "C7")
+
+    def test_autorizar_y_rechazar(self):
+        s = {"tipo": "solicitudrol", "id": 1, "usuario": 40, "usuario_roles": ["PF"], "rol": "GC", "tipo": "ASIGNAR",
+             "estado": "SOLICITADA", "solicitada_por": 41}
+        for accion in ("rol:autorizar", "rol:rechazar"):
+            with self.subTest(accion=accion):
+                self.assertDecision(decidir(accion, "GC", s), CONCEDE, "C7")
+                self.assertDecision(decidir(accion, "GC", {**s, "solicitada_por": S}), NIEGA, "C7")
+                self.assertDecision(decidir(accion, "GC", {**s, "usuario": S}), NIEGA, "C7")
+                self.assertDecision(decidir(accion, "GC", {**s, "estado": "AUTORIZADA"}), NIEGA, "C7")
+        reevaluada = {**s, "usuario_roles": ["PF", "AC"]}  # recibió AC mientras tanto
+        self.assertDecision(decidir("rol:autorizar", "GC", reevaluada), NIEGA, "C7")
+        self.assertDecision(decidir("rol:rechazar", "GC", reevaluada), CONCEDE)
+
+
+class C14C15Tests(Base):
+    def ventana(self, **cambios):
+        return {"tipo": "ventanaauditoria", "id": 1, "estado": "PENDIENTE", "inicio": "2026-11-01",
+                "fin": "2026-11-30", "auditor": 40, "solicitada_por": 41, **cambios}
+
+    def test_c14(self):
+        self.assertDecision(decidir("ventana:autorizar", "GC", self.ventana()), CONCEDE, "C14")
+        for cambio in ({"estado": "APROBADA"}, {"fin": "2026-12-15"}, {"auditor": S}, {"solicitada_por": S}):
+            with self.subTest(cambio=cambio):
+                self.assertDecision(decidir("ventana:autorizar", "GC", self.ventana(**cambio)), NIEGA, "C14")
+        self.assertDecision(decidir("ventana:autorizar", "AC", self.ventana()), NIEGA, "RG1")
+
+    def test_c15(self):
+        self.assertDecision(decidir("cuenta:crear", "AC", None, {"rol": "TC"}), CONCEDE, "C15")
+        for accion in ("cuenta:modificar", "cuenta:baja"):
+            with self.subTest(accion=accion):
+                self.assertDecision(decidir(accion, "AC", cuenta()), CONCEDE, "C15")
+                self.assertDecision(decidir(accion, "AC", cuenta(id_=S)), NIEGA, "C15")
+                self.assertDecision(decidir(accion, "GC", cuenta()), NIEGA, "RG1")
+
+
+class C17C18Tests(Base):
+    def test_c17_solicitar(self):
+        self.assertDecision(decidir("factor:solicitar_restablecimiento", "AC", cuenta()), CONCEDE, "C17")
+        self.assertDecision(decidir("factor:solicitar_restablecimiento", "AC", cuenta(id_=S)), NIEGA, "C17")
+        self.assertDecision(decidir("factor:solicitar_restablecimiento", "AC", cuenta(estado="EN_BAJA")), NIEGA)
+
+    def test_c17_resolver(self):
+        r = {"tipo": "restablecimientofactor", "id": 1, "usuario": 40, "estado": "SOLICITADO", "solicitado_por": 41}
+        for accion in ("factor:autorizar_restablecimiento", "factor:rechazar_restablecimiento"):
+            with self.subTest(accion=accion):
+                self.assertDecision(decidir(accion, "GC", r), CONCEDE, "C17")
+                for cambio in ({"usuario": S}, {"solicitado_por": S}, {"estado": "AUTORIZADO"}):
+                    self.assertDecision(decidir(accion, "GC", {**r, **cambio}), NIEGA, "C17")
+
+    def test_c18(self):
+        self.assertDecision(decidir("dispositivo:registrar", "AC", None, {"responsable": cuenta(roles=["TC"])}),
+                            CONCEDE, "C18")
+        for responsable in (cuenta(roles=["VF"]), cuenta(roles=["TC"], estado="EN_BAJA")):
+            with self.subTest(responsable=responsable):
+                self.assertDecision(decidir("dispositivo:registrar", "AC", None, {"responsable": responsable}),
+                                    NIEGA, "C18")
+        self.assertDecision(decidir("dispositivo:revocar", "AC", {"tipo": "dispositivocampo", "id": 1}), CONCEDE)
+
+
+class C21C22Tests(Base):
+    def test_c21_cada_quien_ve_su_cuenta_y_sus_sesiones(self):
+        for rol in ("TC", "VF", "PF"):
+            with self.subTest(rol=rol):
+                self.assertDecision(decidir("cuenta:leer", rol, cuenta(id_=S)), CONCEDE, "C21")
+                self.assertDecision(decidir("cuenta:leer", rol, cuenta()), FUERA_DE_ALCANCE, "C21")
+                self.assertDecision(decidir("cuenta:leer", rol, {"tipo": "sesion", "id": 1, "usuario": S}), CONCEDE)
+        self.assertDecision(decidir("cuenta:leer", "GC", cuenta()), CONCEDE, "matriz")
+
+    def test_c21_registrar_otro_factor_exige_mfa(self):
+        for rol in ("TC", "VF", "GC", "AC", "PF"):
+            with self.subTest(rol=rol):
+                propia, ajena = cuenta(id_=S), cuenta()
+                self.assertDecision(decidir("factor:registrar", rol, propia, {"tiene_factor": False}), CONCEDE, "C21")
+                self.assertDecision(decidir_mfa("factor:registrar", rol, propia, {"tiene_factor": True}),
+                                    "REAUTENTICAR", "C21")
+                self.assertDecision(decidir_mfa("factor:registrar", rol, propia, {"tiene_factor": True}, mfa_edad=5),
+                                    CONCEDE)
+                self.assertDecision(decidir("factor:registrar", rol, ajena, {"tiene_factor": False}),
+                                    FUERA_DE_ALCANCE)
+
+    def test_c22_y_v14(self):
+        alerta = {"tipo": "alerta", "id": 1, "sujeto": OTRO, "control": "H1", "estado": "ABIERTA"}
+        self.assertDecision(decidir("alerta:resolver", "GC", alerta), CONCEDE, "C22")
+        self.assertDecision(decidir("alerta:resolver", "GC", {**alerta, "sujeto": S}), NIEGA, "C22")  # V14
+        self.assertDecision(decidir("alerta:resolver", "GC", {**alerta, "estado": "RESUELTA"}), NIEGA, "C22")

@@ -380,12 +380,16 @@ class IntegracionCatalogoTests(TestCase):
         self.dueno = crear_cuenta("dueno", EstadoCuenta.ACTIVA)
 
     def crear(self):
+        import os
+        from unittest import mock
+
         from django.test import override_settings
 
+        from autorizacion.test_cliente import LOCAL, MotorFalso
         from catalogo import services as catalogo
 
-        # El motor aún no existe (paso 13): se activa explícitamente el modo permisivo.
-        with override_settings(AUTORIZACION_PROVISIONAL_PERMISIVA=True):
+        # Con el motor real (AC·O1a CR, C20) por el mismo camino HTTP que en producción.
+        with override_settings(DEBUG=True), mock.patch.dict(os.environ, LOCAL), MotorFalso().instalar():
             return catalogo.crear_finca(self.ac, "La Esperanza", "San Carlos", self.dueno)
 
     def test_propietario_sin_rol_pf_se_niega(self):

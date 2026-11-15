@@ -125,7 +125,8 @@ class DecisionTests(unittest.TestCase):
         self.assertEqual(reglas.decidir(solicitud("certificado:leer", "GC")).hbac, ("H2",))
 
     def test_rg5_condicion_sin_implementar_niega(self):
-        d = reglas.decidir(solicitud("cuenta:crear", "AC"))
+        with mock.patch.dict(reglas.CONDICIONES, C15=reglas._no_implementada("C15")):
+            d = reglas.decidir(solicitud("cuenta:crear", "AC"))
         self.assertEqual((d.resultado, d.regla), (NIEGA, "RG5"))
         self.assertIn("C15", d.motivo)
 

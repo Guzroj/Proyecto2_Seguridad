@@ -195,15 +195,16 @@ USE_TZ = True
 # Persona 3 y Persona 4 agregan aquí la ruta de su implementación.
 # ---------------------------------------------------------------------------
 VERDEAZUL_GANCHOS = {
-    # Motor real (PEP -> servicio autorizador). Se activa al terminar las condiciones C1–C22:
-    # "autorizar": "autorizacion.cliente.autorizar",
+    # Motor real: el PEP (Django) consulta al servicio autorizador por HTTP, con fallo cerrado.
+    "autorizar": "autorizacion.cliente.autorizar",
     "usuarios_con_rol": "cuentas.roles.usuarios_con_rol",
     # "registrar_evento": "bitacora.servicios.registrar_evento",
     # "on_medicion_aprobada": "certificados.servicios.emitir",
 }
-# Sin motor de autorización configurado se NIEGA todo (fallo cerrado), excepto en
-# desarrollo local con DEBUG, para poder probar el flujo mientras Persona 3 termina.
-AUTORIZACION_PROVISIONAL_PERMISIVA = DEBUG
+# Solo aplica si se quita "autorizar" de VERDEAZUL_GANCHOS (p. ej. en pruebas de un
+# servicio aislado del motor): la implementación provisional niega todo salvo que
+# esto se active explícitamente. Ya no depende de DEBUG.
+AUTORIZACION_PROVISIONAL_PERMISIVA = False
 
 LOGGING = {
     "version": 1,

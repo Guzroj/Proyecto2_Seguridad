@@ -18,13 +18,23 @@ Atributos del recurso y del contexto (los arma autorizacion.pep):
   enmienda            estado, solicitante, m0_estado, periodo_estado,
                       actores_m0, propietario, justificacion_presente
   usuario             estado, roles
+  solicitudrol        usuario, usuario_roles, rol, tipo, estado, solicitada_por
+  ventanaauditoria    estado, inicio, fin, auditor, solicitada_por
+  restablecimientofactor  usuario, estado, solicitado_por
+  alerta              sujeto, control, estado
+  sesion              usuario
+Del sujeto, además: `ventana` (solo AE, para C5) y, en factor:registrar,
+`tiene_factor` en el contexto (C21).
 Lo que viene en la petición y no en la base (la justificación de C11, el motivo
 de devolución de C2) lo valida el servicio, que es quien lo recibe.
 Las invariantes de dominio (versiones de geometría, estados, H4) las vuelven a
 aplicar los servicios; aquí está lo que decide la matriz.
 """
 
+from datetime import date
+
 from . import matriz
+from .roles import conflictos
 from .reglas import (
     CONDICIONES,
     PROHIBICIONES,
@@ -367,3 +377,158 @@ def h4(s: Solicitud):
 
 
 PROHIBICIONES.append(h4)
+
+
+# ---------------------------------------------------------------------------
+# O7–O9
+# ---------------------------------------------------------------------------
+MAX_DIAS_VENTANA = 30
+
+
+def _fecha(valor, nombre: str) -> date:
+    if not isinstance(valor, str):
+        raise AtributoFaltante(nombre)
+    try:
+        return date.fromisoformat(valor)
+    except ValueError:
+        raise AtributoFaltante(nombre)
+
+
+@registrar("C5")
+def c5(s: Solicitud, rol: str):
+    """
+    AE·todas L, X: cuenta(s).estado = ACTIVA ∧ hoy ∈ [v.inicio, v.fin] ∧ (v.fin − v.inicio) ≤ 30 d
+      ∧ v.aprobada_por ∈ U_GC ∧ v.aprobada_por ≠ v.solicitada_por.
+    U_GC se evalúa en el momento de la aprobación. La cuenta ACTIVA ya la exige el motor (RG1).
+    """
+    v = s.ventana
+    if v is None:
+        return niega("C5", "El auditor no tiene una ventana de auditoría.")
+    if dato(v, "estado", "ventana") != "APROBADA":
+        return niega("C5", "La ventana de auditoría no está aprobada.")
+    inicio, fin = _fecha(dato(v, "inicio", "ventana"), "ventana.inicio"), _fecha(dato(v, "fin", "ventana"), "ventana.fin")
+    hoy = _fecha(dato(v, "hoy", "ventana"), "ventana.hoy")
+    if (fin - inicio).days > MAX_DIAS_VENTANA:
+        return niega("C5", "La ventana dura más de 30 días.")
+    if dato(v, "aprobada_por_gc", "ventana") is not True:
+        return niega("C5", "La ventana no la aprobó un GC.")
+    if dato(v, "aprobada_por_distinto", "ventana") is not True:
+        return niega("C5", "La ventana la aprobó quien la pidió.")
+    if not inicio <= hoy <= fin:
+        return niega("C5", "Hoy está fuera de la ventana de auditoría (V9).")
+    return concede("C5")
+
+
+@registrar("C7")
+def c7(s: Solicitud, rol: str):
+    """
+    AC·O7b AR(u, r): u ≠ s ∧ cuenta(u).estado = ACTIVA ∧ ∀r' ∈ R_vig(u): {r, r'} ∉ E (V10).
+    AC·O7b RR(u, r): u ≠ s.  (GC y AE quedan como solicitud: lo hace el servicio.)
+    GC·O7b AU, RE: g ≠ solicitante ∧ g ≠ u; al autorizar una asignación, E se reevalúa.
+    """
+    _, operacion = destino(s)
+    r = recurso(s)
+    if operacion in ("AR", "RR"):
+        if dato(r, "id") == s.sujeto_id:
+            return niega("C7", "Nadie cambia sus propios roles (V10).")
+        if operacion == "RR":
+            return concede("C7")
+        if dato(r, "estado") != ACTIVA:
+            return niega("C7", "Solo se asignan roles a cuentas ACTIVA.")
+        nuevo = s.contexto.get("rol")
+        if not isinstance(nuevo, str):
+            raise AtributoFaltante("contexto.rol")
+        choque = conflictos(nuevo, dato(r, "roles"))
+        if choque:
+            return niega("C7", f"El rol {nuevo} es excluyente con {', '.join(sorted(choque))} (V10).")
+        return concede("C7")
+    if dato(r, "estado") != SOLICITADA:
+        return niega("C7", "La solicitud ya fue resuelta.")
+    if s.sujeto_id in (dato(r, "solicitada_por"), dato(r, "usuario")):
+        return niega("C7", "Resuelve un GC distinto de quien la pidió y de la persona destino.")
+    if operacion == "AU" and dato(r, "tipo") == "ASIGNAR":
+        choque = conflictos(dato(r, "rol"), dato(r, "usuario_roles"))
+        if choque:
+            return niega("C7", f"El rol {dato(r, 'rol')} es excluyente con {', '.join(sorted(choque))}.")
+    return concede("C7")
+
+
+@registrar("C14")
+def c14(s: Solicitud, rol: str):
+    """GC·O7a AU: v.estado = PENDIENTE ∧ (v.fin − v.inicio) ≤ 30 d ∧ s ≠ v.solicitada_por ∧ s ≠ v.auditor."""
+    v = recurso(s)
+    if dato(v, "estado") != "PENDIENTE":
+        return niega("C14", "La ventana ya fue aprobada.")
+    if (_fecha(dato(v, "fin"), "recurso.fin") - _fecha(dato(v, "inicio"), "recurso.inicio")).days > MAX_DIAS_VENTANA:
+        return niega("C14", "La ventana dura más de 30 días.")
+    if s.sujeto_id in (dato(v, "solicitada_por"), dato(v, "auditor")):
+        return niega("C14", "Aprueba un GC distinto de quien la pidió y del auditor.")
+    return concede("C14")
+
+
+@registrar("C15")
+def c15(s: Solicitud, rol: str):
+    """AC·O7a CR, MO, BA: u ≠ s (una cuenta nueva siempre es otra persona)."""
+    if s.recurso and dato(s.recurso, "id") == s.sujeto_id:
+        return niega("C15", "Nadie gestiona su propia cuenta.")
+    return concede("C15")
+
+
+@registrar("C17")
+def c17(s: Solicitud, rol: str):
+    """
+    AC·O7d SO: u ≠ s ∧ cuenta(u).estado = ACTIVA.
+    GC·O7d AU, RE: g ≠ solicitante ∧ g ≠ u. La verificación de identidad (método
+    y fecha) llega en la petición y la valida el servicio antes de autorizar.
+    """
+    _, operacion = destino(s)
+    r = recurso(s)
+    if operacion == "SO":
+        if dato(r, "id") == s.sujeto_id:
+            return niega("C17", "Nadie pide restablecer su propio segundo factor.")
+        if dato(r, "estado") != ACTIVA:
+            return niega("C17", "La cuenta no está ACTIVA.")
+        return concede("C17")
+    if dato(r, "estado") != "SOLICITADO":
+        return niega("C17", "El restablecimiento ya fue resuelto.")
+    if s.sujeto_id in (dato(r, "solicitado_por"), dato(r, "usuario")):
+        return niega("C17", "Resuelve un GC distinto de quien lo pidió y de la persona.")
+    return concede("C17")
+
+
+@registrar("C18")
+def c18(s: Solicitud, rol: str):
+    """AC·O7c CR: TC ∈ R_vig(responsable(d)) ∧ cuenta(responsable(d)).estado = ACTIVA."""
+    responsable = del_contexto(s, "responsable")
+    if "TC" not in dato(responsable, "roles", "responsable"):
+        return niega("C18", "El responsable no tiene el rol TC vigente.")
+    if dato(responsable, "estado", "responsable") != ACTIVA:
+        return niega("C18", "La cuenta del responsable no está ACTIVA.")
+    return concede("C18")
+
+
+@registrar("C21")
+def c21(s: Solicitud, rol: str):
+    """
+    Todos·O7a L y Todos·O7d CR: recurso.usuario = s (lo ajeno: 404).
+    Después del primer factor, registrar otro exige mfa (RG6: reto).
+    """
+    _, operacion = destino(s)
+    r = recurso(s)
+    dueno = dato(r, "id") if r.get("tipo") == "usuario" else dato(r, "usuario")
+    if dueno != s.sujeto_id:
+        return fuera_de_alcance("C21")
+    if operacion == "CR" and dato(s.contexto, "tiene_factor", "contexto") and not s.mfa:
+        return reautenticar("C21")
+    return concede("C21")
+
+
+@registrar("C22")
+def c22(s: Solicitud, rol: str):
+    """GC·O9 RS: alerta.sujeto ≠ s (V14). El motivo lo valida el servicio."""
+    a = recurso(s)
+    if dato(a, "estado") != "ABIERTA":
+        return niega("C22", "La alerta ya está resuelta.")
+    if dato(a, "sujeto") == s.sujeto_id:
+        return niega("C22", "Nadie resuelve una alerta sobre sí mismo (V14).")
+    return concede("C22")
