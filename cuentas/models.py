@@ -297,6 +297,74 @@ class DispositivoCampo(models.Model):
 
 
 # ---------------------------------------------------------------------------
+# O7d · Restablecimiento del segundo factor con doble control (C17)
+# ---------------------------------------------------------------------------
+class MetodoVerificacion(models.TextChoices):
+    PRESENCIAL = "PRESENCIAL", "Presencial con documento de identidad"
+    VIDEOLLAMADA = "VIDEOLLAMADA", "Videollamada con documento de identidad"
+    LLAMADA_REGISTRADA = "LLAMADA_REGISTRADA", "Llamada al número registrado en la organización"
+
+
+class EstadoRestablecimiento(models.TextChoices):
+    SOLICITADO = "SOLICITADO", "Solicitado"
+    AUTORIZADO = "AUTORIZADO", "Autorizado"
+    RECHAZADO = "RECHAZADO", "Rechazado"
+
+
+class RestablecimientoFactor(models.Model):
+    """
+    C17: AC solicita invalidar el segundo factor de una cuenta (p. ej. teléfono
+    perdido). Un GC distinto del solicitante y de la persona lo autoriza después
+    de verificar su identidad fuera del sistema, y registra el método y la fecha.
+    Al autorizar se eliminan los factores (lo único que allauth acepta como
+    invalidación); aquí queda la constancia de cuáles eran, sin sus secretos.
+    """
+
+    usuario = models.ForeignKey(Usuario, on_delete=models.PROTECT, related_name="restablecimientos_factor")
+    estado = models.CharField(
+        max_length=10, choices=EstadoRestablecimiento.choices, default=EstadoRestablecimiento.SOLICITADO
+    )
+    motivo = models.CharField(max_length=500)
+    solicitado_por = models.ForeignKey(Usuario, on_delete=models.PROTECT, related_name="+")
+    solicitado_en = models.DateTimeField(auto_now_add=True)
+    resuelto_por = models.ForeignKey(Usuario, on_delete=models.PROTECT, related_name="+", null=True, blank=True)
+    resuelto_en = models.DateTimeField(null=True, blank=True)
+    metodo_verificacion = models.CharField(max_length=18, choices=MetodoVerificacion.choices, blank=True)
+    verificado_en = models.DateTimeField(null=True, blank=True, help_text="Cuándo se verificó la identidad.")
+    motivo_rechazo = models.CharField(max_length=500, blank=True)
+    factores_invalidados = models.JSONField(default=list, blank=True, help_text="Tipo y fechas; nunca secretos.")
+
+    class Meta:
+        verbose_name = "restablecimiento de segundo factor"
+        verbose_name_plural = "restablecimientos de segundo factor"
+        ordering = ["-solicitado_en"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["usuario"], condition=Q(estado="SOLICITADO"), name="restablecimiento_uno_en_curso"
+            ),
+            models.CheckConstraint(
+                condition=Q(estado="SOLICITADO", resuelto_por__isnull=True, resuelto_en__isnull=True)
+                | (~Q(estado="SOLICITADO") & Q(resuelto_por__isnull=False, resuelto_en__isnull=False)),
+                name="restablecimiento_resolucion_coherente",
+            ),
+            # AU exige la verificación registrada (método y fecha).
+            models.CheckConstraint(
+                condition=~Q(estado="AUTORIZADO")
+                | (~Q(metodo_verificacion="") & Q(verificado_en__isnull=False)),
+                name="restablecimiento_autorizado_con_verificacion",
+            ),
+            models.CheckConstraint(
+                condition=~Q(resuelto_por=models.F("solicitado_por")) & ~Q(resuelto_por=models.F("usuario"))
+                & ~Q(solicitado_por=models.F("usuario")),
+                name="restablecimiento_tres_personas",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Restablecimiento · {self.usuario} ({self.estado})"
+
+
+# ---------------------------------------------------------------------------
 # O7a · Sesiones propias
 # ---------------------------------------------------------------------------
 class MotivoCierre(models.TextChoices):

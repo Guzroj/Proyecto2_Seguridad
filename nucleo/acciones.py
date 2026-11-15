@@ -59,3 +59,8 @@ class Accion:
     # O7c · Dispositivos de campo
     DISPOSITIVO_REGISTRAR = "dispositivo:registrar"  # AC·O7c CR (C18)
     DISPOSITIVO_REVOCAR = "dispositivo:revocar"      # AC·O7c RV (sin condición)
+
+    # O7d · Segundo factor
+    FACTOR_SOLICITAR_RESTABLECIMIENTO = "factor:solicitar_restablecimiento"    # AC·O7d SO (C17)
+    FACTOR_AUTORIZAR_RESTABLECIMIENTO = "factor:autorizar_restablecimiento"    # GC·O7d AU (C17)
+    FACTOR_RECHAZAR_RESTABLECIMIENTO = "factor:rechazar_restablecimiento"      # GC·O7d RE (C17)

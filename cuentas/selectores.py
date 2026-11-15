@@ -6,6 +6,7 @@ datos, nunca de la sesión ni de la petición (los roles no se copian en la sesi
   registros_sin_sincronizar(u)  decide si la baja deja la cuenta EN_BAJA (C15)
   hoy()               fecha de hoy en Costa Rica (reloj del servidor)
   ventana_vigente(s)  C5: ventana de auditoría que habilita hoy al AE, o None
+  metadatos_factores(u)  O7d L (metadatos): tipo y fechas de los factores, sin secretos
 """
 
 from django.db.models import Q
@@ -86,3 +87,18 @@ def ventana_vigente(usuario, en=None) -> VentanaAuditoria | None:
     ):
         return None
     return v
+
+
+def metadatos_factores(usuario) -> list[dict]:
+    """
+    AC·O7d L (metadatos) y AE·O7d L: qué factores tiene la cuenta y cuándo se
+    crearon y usaron. Nunca el campo `data` (secretos cifrados, RG2).
+    """
+    from allauth.mfa.models import Authenticator
+
+    return [
+        {"tipo": tipo, "creado_en": creado, "usado_en": usado}
+        for tipo, creado, usado in Authenticator.objects.filter(user_id=getattr(usuario, "pk", usuario))
+        .order_by("created_at")
+        .values_list("type", "created_at", "last_used_at")
+    ]

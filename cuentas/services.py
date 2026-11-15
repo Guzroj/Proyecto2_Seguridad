@@ -17,7 +17,9 @@ C15 (AC·O7a CR, MO, BA) se implementa en crear_cuenta, modificar_cuenta,
 dar_de_baja y enlace_activacion; C7 (AC·O7b AR, RR; GC·O7b AU, RE) en
 asignar_rol, retirar_rol, autorizar_solicitud y rechazar_solicitud; C14
 (GC·O7a AU) en aprobar_ventana; C18 (AC·O7c CR, RV) en registrar_dispositivo y
-revocar_dispositivo. Estos sí autorizan con el motor y registran el
+revocar_dispositivo; C17 (AC·O7d SO; GC·O7d AU, RE) en
+solicitar_restablecimiento, autorizar_restablecimiento y
+rechazar_restablecimiento. Estos sí autorizan con el motor y registran el
 evento en la bitácora. procesar_ventanas es la tarea diaria (proceso sin
 usuario): activa las cuentas AE el día de inicio y da de baja las vencidas.
 """
@@ -46,9 +48,12 @@ from .models import (
     DispositivoCampo,
     EstadoCuenta,
     EstadoDispositivo,
+    EstadoRestablecimiento,
     EstadoSolicitudRol,
     EstadoVentana,
+    MetodoVerificacion,
     MotivoCierre,
+    RestablecimientoFactor,
     RolUsuario,
     SolicitudRol,
     TipoSolicitudRol,
@@ -631,3 +636,110 @@ def revocar_dispositivos_de(cuenta, *, por=None, motivo: str) -> int:
         for d in activos:
             _revocar(d, por, motivo)
     return len(activos)
+
+
+# ===========================================================================
+# C17 · AC·O7d SO; GC·O7d AU, RE
+# ===========================================================================
+VIGENCIA_VERIFICACION = timedelta(days=7)
+
+
+def _evento_restablecimiento(usuario, accion, r, **extra):
+    ganchos.registrar_evento(
+        actor=usuario, accion=accion, recurso_tipo="restablecimiento_factor", recurso_id=str(r.pk),
+        despues={"usuario": r.usuario_id, "estado": r.estado, **extra},
+    )
+
+
+@transicion(Accion.FACTOR_SOLICITAR_RESTABLECIMIENTO, "restablecimiento_factor")
+def solicitar_restablecimiento(usuario, cuenta, *, motivo) -> RestablecimientoFactor:
+    """C17 SO: u ≠ s ∧ cuenta(u).estado = ACTIVA. Una solicitud en curso por cuenta."""
+    motivo = _texto(motivo, "motivo", 500)
+    if not motivo:
+        raise DatoInvalido("motivo: requerido.")
+    cuenta = bloquear(Usuario, cuenta)
+    ganchos.autorizar(usuario, Accion.FACTOR_SOLICITAR_RESTABLECIMIENTO, cuenta)
+    _exigir_otra_cuenta(usuario, cuenta)
+    if cuenta.estado != EstadoCuenta.ACTIVA:
+        raise TransicionInvalida(f"La cuenta está {cuenta.estado}.")
+    try:
+        with transaction.atomic():
+            r = RestablecimientoFactor.objects.create(usuario=cuenta, motivo=motivo, solicitado_por=usuario)
+    except IntegrityError:
+        raise TransicionInvalida("Ya hay un restablecimiento en curso para esta cuenta.")
+    _evento_restablecimiento(usuario, Accion.FACTOR_SOLICITAR_RESTABLECIMIENTO, r)
+    return r
+
+
+def _resolver_restablecimiento(usuario, restablecimiento, accion) -> RestablecimientoFactor:
+    r = bloquear(RestablecimientoFactor, restablecimiento)
+    ganchos.autorizar(usuario, accion, r)
+    if r.estado != EstadoRestablecimiento.SOLICITADO:
+        raise TransicionInvalida(f"El restablecimiento ya está {r.estado}.")
+    if usuario.pk in (r.solicitado_por_id, r.usuario_id):
+        raise SeparacionDeFunciones("Resuelve un GC distinto de quien lo pidió y de la persona.")
+    return r
+
+
+def _validar_verificacion(metodo, verificado_en) -> tuple[str, datetime]:
+    if metodo not in MetodoVerificacion.values:
+        raise DatoInvalido("metodo_verificacion: fuera del catálogo.")
+    if not isinstance(verificado_en, datetime) or timezone.is_naive(verificado_en):
+        raise DatoInvalido("verificado_en: fecha y hora con zona horaria.")
+    ahora = timezone.now()
+    if verificado_en > ahora + timedelta(minutes=5):
+        raise DatoInvalido("verificado_en: no puede estar en el futuro.")
+    if verificado_en < ahora - VIGENCIA_VERIFICACION:
+        raise DatoInvalido("verificado_en: la verificación tiene más de 7 días; repítala.")
+    return metodo, verificado_en
+
+
+@transicion(Accion.FACTOR_AUTORIZAR_RESTABLECIMIENTO, "restablecimiento_factor")
+def autorizar_restablecimiento(usuario, restablecimiento, *, metodo_verificacion, verificado_en):
+    """
+    C17 AU: g ≠ solicitante ∧ g ≠ u ∧ verificación de identidad fuera del sistema
+    registrada (método y fecha). Efecto: invalida todos los factores de u y
+    cierra sus sesiones. Si u tiene un rol que exige segundo factor, al volver a
+    entrar se le pide registrar uno nuevo.
+    """
+    metodo, verificado_en = _validar_verificacion(metodo_verificacion, verificado_en)
+    r = _resolver_restablecimiento(usuario, restablecimiento, Accion.FACTOR_AUTORIZAR_RESTABLECIMIENTO)
+    # Lectura sin bloqueo: el GC no modifica la cuenta (RLS no le da UPDATE sobre ella).
+    cuenta = Usuario.objects.get(pk=r.usuario_id)
+    if cuenta.estado != EstadoCuenta.ACTIVA:
+        raise TransicionInvalida(f"La cuenta está {cuenta.estado}.")
+    from allauth.mfa.models import Authenticator
+
+    r.estado = EstadoRestablecimiento.AUTORIZADO
+    r.resuelto_por = usuario
+    r.resuelto_en = timezone.now()
+    r.metodo_verificacion = metodo
+    r.verificado_en = verificado_en
+    r.factores_invalidados = [
+        {"tipo": m["tipo"], "creado_en": m["creado_en"].isoformat(),
+         "usado_en": m["usado_en"].isoformat() if m["usado_en"] else None}
+        for m in selectores.metadatos_factores(cuenta)
+    ]
+    r.save(update_fields=["estado", "resuelto_por", "resuelto_en", "metodo_verificacion", "verificado_en",
+                          "factores_invalidados"])
+    Authenticator.objects.filter(user_id=cuenta.pk).delete()
+    cerradas = sesion.cerrar_sesiones(cuenta)
+    _evento_restablecimiento(usuario, Accion.FACTOR_AUTORIZAR_RESTABLECIMIENTO, r, metodo=metodo,
+                             factores=[f["tipo"] for f in r.factores_invalidados], sesiones_cerradas=cerradas)
+    return r
+
+
+@transicion(Accion.FACTOR_RECHAZAR_RESTABLECIMIENTO, "restablecimiento_factor")
+def rechazar_restablecimiento(usuario, restablecimiento, *, motivo) -> RestablecimientoFactor:
+    """C17 RE: queda RECHAZADO y los factores no cambian."""
+    motivo = _texto(motivo, "motivo", 500)
+    if not motivo:
+        raise DatoInvalido("motivo: requerido.")
+    r = _resolver_restablecimiento(usuario, restablecimiento, Accion.FACTOR_RECHAZAR_RESTABLECIMIENTO)
+    r.estado = EstadoRestablecimiento.RECHAZADO
+    r.resuelto_por = usuario
+    r.resuelto_en = timezone.now()
+    r.motivo_rechazo = motivo
+    r.save(update_fields=["estado", "resuelto_por", "resuelto_en", "motivo_rechazo"])
+    _evento_restablecimiento(usuario, Accion.FACTOR_RECHAZAR_RESTABLECIMIENTO, r)
+    return r
