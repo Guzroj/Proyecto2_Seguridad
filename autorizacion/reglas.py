@@ -226,3 +226,7 @@ def decidir(datos) -> Decision:
         return Decision(FUERA_DE_ALCANCE, evaluaciones[0].regla, "No encontrado.")
     primera = next(e for e in evaluaciones if e.resultado == NIEGA)
     return Decision(NIEGA, primera.regla, primera.motivo)
+
+
+# Las condiciones implementadas se registran al importar su módulo.
+from . import condiciones  # noqa: E402,F401

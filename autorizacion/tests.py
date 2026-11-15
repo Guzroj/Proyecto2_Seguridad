@@ -1,13 +1,12 @@
 """Pruebas del motor de autorización que no necesitan base de datos."""
 
+import unittest
 from itertools import combinations
-
-from django.test import SimpleTestCase
 
 from autorizacion import roles
 
 
-class ParesExcluyentesTests(SimpleTestCase):
+class ParesExcluyentesTests(unittest.TestCase):
     ESPERADOS = {
         ("TC", "VF"), ("AC", "GC"), ("AC", "TC"), ("AC", "VF"),
         ("AE", "TC"), ("AE", "VF"), ("AE", "GC"), ("AE", "AC"),

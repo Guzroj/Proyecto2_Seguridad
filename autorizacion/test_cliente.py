@@ -5,6 +5,13 @@ Un transporte HTTP falso entrega cada petición al motor real (reglas.decidir),
 así se prueba el mismo camino que en producción sin levantar el servicio.
 """
 
+import unittest
+
+try:
+    import django  # noqa: F401
+except ImportError:  # imagen del autorizador: solo corre las pruebas puras del motor
+    raise unittest.SkipTest("Django no está instalado en esta imagen")
+
 import json
 import os
 from types import SimpleNamespace
@@ -90,8 +97,9 @@ class ClienteTests(TestCase):
             cliente.autorizar(self.gc, Accion.ALERTA_LEER, self.tc, {"tecnico": self.tc, "n": 3})
         cuerpo = self.motor.cuerpo
         self.assertEqual(cuerpo["sujeto"], {"id": self.gc.pk, "estado": "ACTIVA", "roles": ["GC"], "mfa_edad": None})
-        self.assertEqual(cuerpo["recurso"], {"tipo": "usuario", "id": self.tc.pk})
-        self.assertEqual(cuerpo["contexto"], {"tecnico": {"tipo": "usuario", "id": self.tc.pk}, "n": 3})
+        tecnica = {"tipo": "usuario", "id": self.tc.pk, "estado": "ACTIVA", "roles": ["TC"]}
+        self.assertEqual(cuerpo["recurso"], tecnica)
+        self.assertEqual(cuerpo["contexto"], {"tecnico": tecnica, "n": 3})
         texto = self.motor.recibidas[-1].content.decode()
         for dato in ("gerente", "Gabriela", "gabi@example.com", "password"):
             self.assertNotIn(dato, texto)
