@@ -4,6 +4,7 @@ import base64
 import os
 import secrets
 import time
+from datetime import timedelta
 from io import StringIO
 from unittest import mock
 
@@ -319,6 +320,17 @@ class UsuariosPruebaTests(TestCase):
                 self.assertEqual(mfa.tiene_totp(u), rol != "PF")
         self.assertIn("otpauth://totp/", salida)
         self.assertNotIn(self.ENTORNO["VZ_PRUEBA_CLAVE"], salida)
+
+    def test_la_cuenta_ae_tiene_ventana_aprobada_de_30_dias(self):
+        from cuentas.selectores import hoy, ventana_vigente
+
+        self.correr()
+        ae = Usuario.objects.get(username="prueba_ae")
+        v = ventana_vigente(ae)
+        self.assertIsNotNone(v)
+        self.assertEqual((v.inicio, (v.fin - v.inicio).days), (hoy(), 30))
+        self.assertEqual((v.solicitada_por.username, v.aprobada_por.username), ("prueba_ac", "prueba_gc"))
+        self.assertEqual(RolUsuario.objects.get(usuario=ae).vigente_hasta.date(), v.fin + timedelta(days=1))
 
     def test_las_cuentas_creadas_ingresan_con_el_secreto_conocido(self):
         self.correr()

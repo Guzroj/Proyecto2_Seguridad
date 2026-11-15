@@ -15,13 +15,17 @@ de GC/AE y el cierre de sesiones a los servicios de AR/RR (C7).
 
 C15 (AC·O7a CR, MO, BA) se implementa en crear_cuenta, modificar_cuenta,
 dar_de_baja y enlace_activacion; C7 (AC·O7b AR, RR; GC·O7b AU, RE) en
-asignar_rol, retirar_rol, autorizar_solicitud y rechazar_solicitud. Estos sí
-autorizan con el motor y registran el evento en la bitácora.
+asignar_rol, retirar_rol, autorizar_solicitud y rechazar_solicitud; C14
+(GC·O7a AU) en aprobar_ventana. Estos sí autorizan con el motor y registran el
+evento en la bitácora. procesar_ventanas es la tarea diaria (proceso sin
+usuario): activa las cuentas AE el día de inicio y da de baja las vencidas.
 """
 
 from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
+from datetime import date, datetime, time, timedelta
+
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.urls import reverse
@@ -37,13 +41,16 @@ from nucleo.transicion import bloquear, transicion
 
 from . import selectores, sesion
 from .models import (
+    DIAS_MAXIMOS_VENTANA,
     EstadoCuenta,
     EstadoSolicitudRol,
+    EstadoVentana,
     MotivoCierre,
     RolUsuario,
     SolicitudRol,
     TipoSolicitudRol,
     Usuario,
+    VentanaAuditoria,
 )
 
 TRANSICIONES: dict[str, frozenset[str]] = {
@@ -198,16 +205,22 @@ def _username(valor) -> str:
 
 
 @transicion(Accion.CUENTA_CREAR, "cuenta")
-def crear_cuenta(usuario, *, username, rol, first_name="", last_name="", email="") -> Usuario:
+def crear_cuenta(usuario, *, username, rol, first_name="", last_name="", email="",
+                 inicio=None, fin=None) -> Usuario:
     """
     C15 CR. La cuenta nace sin contraseña utilizable: la persona la fija con el
     enlace de activación (enlace_activacion), que AC le entrega por otro canal.
     Con rol GC queda PENDIENTE (sin rol) con una solicitud que otro GC autoriza
-    (C7); con AE, PENDIENTE hasta su ventana de auditoría (C14). Con otro rol
-    queda ACTIVA con ese rol.
+    (C7). Con rol AE exige la ventana [inicio, fin] (fechas, máximo 30 días) y
+    queda PENDIENTE hasta que un GC la apruebe y llegue el día de inicio (C14).
+    Con otro rol queda ACTIVA con ese rol.
     """
     if not roles.es_rol(rol):
         raise DatoInvalido(f"Rol desconocido: {rol!r}.")
+    if rol == roles.AE:
+        inicio, fin = _validar_ventana(inicio, fin)
+    elif inicio is not None or fin is not None:
+        raise DatoInvalido("Solo las cuentas AE llevan ventana de auditoría.")
     ganchos.autorizar(usuario, Accion.CUENTA_CREAR, None, {"rol": rol})
     datos = {
         "username": _username(username),
@@ -219,7 +232,9 @@ def crear_cuenta(usuario, *, username, rol, first_name="", last_name="", email="
     if rol == roles.GC:
         # C7: la cuenta se activa cuando otro GC autoriza la solicitud.
         _solicitar(usuario, cuenta, rol, TipoSolicitudRol.ASIGNAR)
-    elif rol != roles.AE:  # AE: la activa su ventana de auditoría (C14)
+    elif rol == roles.AE:
+        VentanaAuditoria.objects.create(auditor=cuenta, inicio=inicio, fin=fin, solicitada_por=usuario)
+    else:
         cuenta, _ = cambiar_estado(cuenta, EstadoCuenta.ACTIVA)
         agregar_rol(cuenta, rol)
     _evento(usuario, Accion.CUENTA_CREAR, cuenta, despues={"estado": cuenta.estado, "rol": rol})
@@ -436,3 +451,107 @@ def rechazar_solicitud(usuario, solicitud, *, motivo="") -> SolicitudRol:
     cuenta = solicitud.usuario
     _evento_rol(usuario, Accion.ROL_RECHAZAR, cuenta, solicitud.rol, solicitud=solicitud.pk, tipo=solicitud.tipo)
     return solicitud
+
+
+# ===========================================================================
+# C14 · GC·O7a AU (ventana de auditoría) y tarea diaria
+# ===========================================================================
+def _validar_ventana(inicio, fin) -> tuple[date, date]:
+    if not isinstance(inicio, date) or not isinstance(fin, date) or isinstance(inicio, datetime) \
+            or isinstance(fin, datetime):
+        raise DatoInvalido("La ventana de auditoría necesita fechas de inicio y fin.")
+    if fin < inicio:
+        raise DatoInvalido("La ventana termina antes de empezar.")
+    if (fin - inicio).days > DIAS_MAXIMOS_VENTANA:
+        raise DatoInvalido(f"La ventana dura como máximo {DIAS_MAXIMOS_VENTANA} días.")
+    if fin < selectores.hoy():
+        raise DatoInvalido("La ventana ya terminó.")
+    return inicio, fin
+
+
+def comienzo_del_dia(dia: date) -> datetime:
+    """00:00 de `dia` en hora de Costa Rica."""
+    return timezone.make_aware(datetime.combine(dia, time.min))
+
+
+@transicion(Accion.VENTANA_AUTORIZAR, "ventana")
+def aprobar_ventana(usuario, ventana) -> VentanaAuditoria:
+    """
+    C14: v.estado = PENDIENTE ∧ (v.fin − v.inicio) ≤ 30 d ∧ s ≠ v.solicitada_por
+    ∧ s ≠ v.auditor. El rol AE queda vigente exactamente durante la ventana y la
+    cuenta se activa en v.inicio (hoy mismo si ya empezó; si no, la tarea diaria).
+    """
+    ventana = bloquear(VentanaAuditoria, ventana)
+    ganchos.autorizar(usuario, Accion.VENTANA_AUTORIZAR, ventana)
+    if ventana.estado != EstadoVentana.PENDIENTE:
+        raise TransicionInvalida(f"La ventana ya está {ventana.estado}.")
+    if usuario.pk in (ventana.solicitada_por_id, ventana.auditor_id):
+        raise SeparacionDeFunciones("Aprueba un GC distinto de quien la pidió y del auditor.")
+    if (ventana.fin - ventana.inicio).days > DIAS_MAXIMOS_VENTANA:
+        raise TransicionInvalida(f"La ventana dura más de {DIAS_MAXIMOS_VENTANA} días.")
+    hoy = selectores.hoy()
+    if ventana.fin < hoy:
+        raise TransicionInvalida("La ventana ya terminó.")
+    cuenta = bloquear(Usuario, ventana.auditor_id)
+    if cuenta.estado != EstadoCuenta.PENDIENTE:
+        raise TransicionInvalida(f"La cuenta del auditor está {cuenta.estado}.")
+    ahora = timezone.now()
+    ventana.estado = EstadoVentana.APROBADA
+    ventana.aprobada_por = usuario
+    ventana.aprobada_en = ahora
+    ventana.save(update_fields=["estado", "aprobada_por", "aprobada_en"])
+    agregar_rol(
+        cuenta, roles.AE,
+        desde=max(ahora, comienzo_del_dia(ventana.inicio)),
+        hasta=comienzo_del_dia(ventana.fin + timedelta(days=1)),
+    )
+    if ventana.inicio <= hoy:
+        cuenta, _ = cambiar_estado(cuenta, EstadoCuenta.ACTIVA)
+    ganchos.registrar_evento(
+        actor=usuario, accion=Accion.VENTANA_AUTORIZAR, recurso_tipo="ventana", recurso_id=str(ventana.pk),
+        despues={"auditor": cuenta.pk, "inicio": str(ventana.inicio), "fin": str(ventana.fin),
+                 "estado_cuenta": cuenta.estado},
+    )
+    return ventana
+
+
+def procesar_ventanas(hoy: date | None = None) -> dict[str, int]:
+    """
+    Tarea diaria (proceso sin usuario; corre en fase 'sistema'). Solo toca
+    cuentas con ventana de auditoría:
+      - ventana APROBADA que empieza hoy o antes y sigue vigente: activa la cuenta;
+      - ventana vencida (fin < hoy), aprobada o no: la cuenta pasa a INACTIVA
+        (un AE nunca tiene registros de campo pendientes), se termina su rol AE
+        si siguiera abierto y se cierran sus sesiones.
+    Es idempotente: correrla dos veces el mismo día no cambia nada más.
+    """
+    hoy = hoy or selectores.hoy()
+    resultado = {"activadas": 0, "dadas_de_baja": 0}
+    por_activar = VentanaAuditoria.objects.filter(
+        estado=EstadoVentana.APROBADA, inicio__lte=hoy, fin__gte=hoy, auditor__estado=EstadoCuenta.PENDIENTE
+    ).values_list("pk", "auditor_id")
+    for ventana_id, cuenta_id in list(por_activar):
+        with transaction.atomic():
+            cuenta, anterior = cambiar_estado(cuenta_id, EstadoCuenta.ACTIVA)
+            _evento_tarea(Accion.CUENTA_ACTIVAR, cuenta, anterior, ventana_id)
+        resultado["activadas"] += 1
+    vencidas = VentanaAuditoria.objects.filter(
+        fin__lt=hoy, auditor__estado__in=[EstadoCuenta.PENDIENTE, EstadoCuenta.ACTIVA]
+    ).values_list("pk", "auditor_id")
+    for ventana_id, cuenta_id in list(vencidas):
+        with transaction.atomic():
+            cuenta, anterior = cambiar_estado(cuenta_id, EstadoCuenta.INACTIVA)
+            if roles.AE in selectores.roles_vigentes(cuenta):
+                terminar_rol(cuenta, roles.AE)
+            cerradas = sesion.cerrar_sesiones(cuenta)
+            _evento_tarea(Accion.CUENTA_BAJA, cuenta, anterior, ventana_id, sesiones_cerradas=cerradas)
+        resultado["dadas_de_baja"] += 1
+    return resultado
+
+
+def _evento_tarea(accion, cuenta, anterior, ventana_id, **extra) -> None:
+    ganchos.registrar_evento(
+        actor=None, accion=accion, recurso_tipo="cuenta", recurso_id=str(cuenta.pk),
+        antes={"estado": anterior}, despues={"estado": cuenta.estado, "ventana": ventana_id, **extra},
+        detalle="tarea diaria de ventanas de auditoría",
+    )

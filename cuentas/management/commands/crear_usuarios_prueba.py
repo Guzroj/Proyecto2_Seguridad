@@ -13,12 +13,15 @@ menos 32 caracteres = 160 bits). Ejemplo:
 Todas las cuentas con segundo factor comparten el mismo secreto TOTP (una sola
 entrada en la app de autenticación sirve para todas). Los códigos de
 recuperación se imprimen una vez. Las cuentas que ya existen no se tocan.
-Corre en fase 'sistema' de RLS.
+La cuenta AE nace con una ventana de auditoría de 30 días desde hoy, pedida
+por la cuenta AC y aprobada por la GC de prueba (C5, C14); al vencer, la tarea
+diaria la da de baja. Corre en fase 'sistema' de RLS.
 """
 
 import base64
 import binascii
 import os
+from datetime import timedelta
 
 from allauth.mfa.adapter import get_adapter as get_mfa_adapter
 from allauth.mfa.recovery_codes.internal.auth import RecoveryCodes
@@ -27,10 +30,11 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.utils import timezone
 
 from autorizacion import roles
-from cuentas import rls, services
-from cuentas.models import EstadoCuenta, Usuario
+from cuentas import rls, selectores, services
+from cuentas.models import DIAS_MAXIMOS_VENTANA, EstadoCuenta, EstadoVentana, Usuario, VentanaAuditoria
 
 # Sufijo de usuario -> rol. Hay varios VF y GC porque C2/C3/C7 exigen personas
 # distintas (verificador nuevo en cada envío, GC independiente, doble aprobación).
@@ -84,7 +88,10 @@ class Command(BaseCommand):
                         continue
                     u = Usuario.objects.create_user(username=username, password=clave)
                     services.cambiar_estado(u, EstadoCuenta.ACTIVA)
-                    services.agregar_rol(u, rol)
+                    if rol == roles.AE:
+                        self._ventana(u, prefijo)
+                    else:
+                        services.agregar_rol(u, rol)
                     if rol not in SIN_SEGUNDO_FACTOR:
                         TOTP.activate(u, secreto)
                         codigos[username] = RecoveryCodes.activate(u).get_unused_codes()
@@ -104,3 +111,15 @@ class Command(BaseCommand):
             for username, lista in codigos.items():
                 self.stdout.write(f"{username:<16} {' '.join(lista)}")
         self.stdout.write(self.style.SUCCESS(f"\n{len(creados)} cuentas creadas, {len(existentes)} ya existían."))
+
+    @staticmethod
+    def _ventana(auditor, prefijo):
+        """Ventana aprobada de hoy a hoy + 30 días; el rol AE dura exactamente eso."""
+        hoy = selectores.hoy()
+        fin = hoy + timedelta(days=DIAS_MAXIMOS_VENTANA)
+        VentanaAuditoria.objects.create(
+            auditor=auditor, inicio=hoy, fin=fin, estado=EstadoVentana.APROBADA,
+            solicitada_por=Usuario.objects.get(username=f"{prefijo}_ac"),
+            aprobada_por=Usuario.objects.get(username=f"{prefijo}_gc"), aprobada_en=timezone.now(),
+        )
+        services.agregar_rol(auditor, roles.AE, hasta=services.comienzo_del_dia(fin + timedelta(days=1)))

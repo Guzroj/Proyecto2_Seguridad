@@ -235,7 +235,8 @@ class CuentaNuevaConRolGCTests(C7Base):
         self.assertEqual(cuenta.estado, EstadoCuenta.PENDIENTE)
 
     def test_cuenta_ae_espera_su_ventana(self):
-        cuenta = services.crear_cuenta(self.ac, username="auditora", rol="AE")
+        hoy = timezone.localdate()
+        cuenta = services.crear_cuenta(self.ac, username="auditora", rol="AE", inicio=hoy, fin=hoy)
         self.assertEqual(cuenta.estado, EstadoCuenta.PENDIENTE)
         self.assertFalse(SolicitudRol.objects.filter(usuario=cuenta).exists())
 

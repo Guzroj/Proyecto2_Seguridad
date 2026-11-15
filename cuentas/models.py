@@ -19,6 +19,8 @@ La base de datos lo hace cumplir con una restricción. Los cambios de estado se
 hacen solo con cuentas.services.
 """
 
+from datetime import timedelta
+
 from django.contrib.auth.models import AbstractUser, UserManager
 from django.db import models
 from django.db.models import Q
@@ -185,6 +187,61 @@ class SolicitudRol(models.Model):
 
     def __str__(self) -> str:
         return f"{self.tipo} {self.rol} · {self.usuario} ({self.estado})"
+
+
+# ---------------------------------------------------------------------------
+# O7a · Ventana de auditoría (C5, C14)
+# ---------------------------------------------------------------------------
+DIAS_MAXIMOS_VENTANA = 30
+
+
+class EstadoVentana(models.TextChoices):
+    PENDIENTE = "PENDIENTE", "Pendiente de aprobación"
+    APROBADA = "APROBADA", "Aprobada"
+
+
+class VentanaAuditoria(models.Model):
+    """
+    Período [inicio, fin] (fechas de Costa Rica, ambos días incluidos) en que un
+    auditor externo puede leer y exportar (C5). La pide AC al crear la cuenta AE
+    y la aprueba un GC distinto del solicitante y del auditor (C14). Una por
+    cuenta: al vencer, la tarea diaria deja la cuenta INACTIVA (estado final) y
+    otra auditoría usa otra cuenta.
+    """
+
+    auditor = models.OneToOneField(Usuario, on_delete=models.PROTECT, related_name="ventana_auditoria")
+    inicio = models.DateField()
+    fin = models.DateField()
+    estado = models.CharField(max_length=10, choices=EstadoVentana.choices, default=EstadoVentana.PENDIENTE)
+    solicitada_por = models.ForeignKey(Usuario, on_delete=models.PROTECT, related_name="+")
+    solicitada_en = models.DateTimeField(auto_now_add=True)
+    aprobada_por = models.ForeignKey(Usuario, on_delete=models.PROTECT, related_name="+", null=True, blank=True)
+    aprobada_en = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "ventana de auditoría"
+        verbose_name_plural = "ventanas de auditoría"
+        ordering = ["-inicio"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(fin__gte=models.F("inicio"))
+                & Q(fin__lte=models.F("inicio") + timedelta(days=DIAS_MAXIMOS_VENTANA)),
+                name="ventana_maximo_30_dias",
+            ),
+            models.CheckConstraint(
+                condition=Q(estado="PENDIENTE", aprobada_por__isnull=True, aprobada_en__isnull=True)
+                | Q(estado="APROBADA", aprobada_por__isnull=False, aprobada_en__isnull=False),
+                name="ventana_aprobacion_coherente",
+            ),
+            models.CheckConstraint(
+                condition=~Q(aprobada_por=models.F("solicitada_por")) & ~Q(aprobada_por=models.F("auditor"))
+                & ~Q(solicitada_por=models.F("auditor")),
+                name="ventana_tres_personas",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.auditor} · {self.inicio}–{self.fin} ({self.estado})"
 
 
 # ---------------------------------------------------------------------------

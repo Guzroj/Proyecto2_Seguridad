@@ -13,6 +13,7 @@ from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.db import DatabaseError, transaction
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from cuentas import services, sesion
 from cuentas.models import EstadoCuenta, MotivoCierre, RolUsuario, Sesion, Usuario
@@ -67,7 +68,8 @@ class CrearCuentaTests(GestionBase):
     def test_gc_y_ae_quedan_pendientes_sin_rol(self):
         for rol in ("GC", "AE"):
             with self.subTest(rol=rol):
-                cuenta = self.nueva(f"n_{rol.lower()}", rol)
+                ventana = {"inicio": timezone.localdate(), "fin": timezone.localdate()} if rol == "AE" else {}
+                cuenta = self.nueva(f"n_{rol.lower()}", rol, **ventana)
                 self.assertEqual(cuenta.estado, EstadoCuenta.PENDIENTE)
                 self.assertFalse(cuenta.is_active)
                 self.assertEqual(roles_vigentes(cuenta), set())

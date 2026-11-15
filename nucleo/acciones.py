@@ -51,3 +51,7 @@ class Accion:
     ROL_RETIRAR = "rol:retirar"                  # AC·O7b RR (C7)
     ROL_AUTORIZAR = "rol:autorizar"              # GC·O7b AU (C7: GC/AE)
     ROL_RECHAZAR = "rol:rechazar"                # GC·O7b RE (C7: GC/AE)
+
+    # O7a · Ventanas de auditoría
+    VENTANA_AUTORIZAR = "ventana:autorizar"      # GC·O7a AU (C14)
+    CUENTA_ACTIVAR = "cuenta:activar"            # tarea diaria: la cuenta AE se activa en v.inicio (C14)
