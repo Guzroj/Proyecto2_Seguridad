@@ -7,6 +7,8 @@ datos, nunca de la sesión ni de la petición (los roles no se copian en la sesi
   hoy()               fecha de hoy en Costa Rica (reloj del servidor)
   ventana_vigente(s)  C5: ventana de auditoría que habilita hoy al AE, o None
   metadatos_factores(u)  O7d L (metadatos): tipo y fechas de los factores, sin secretos
+  suspendido_h1(s)    H1: hay una alerta H1 abierta (lecturas de O1/O4 suspendidas)
+  ultima_resolucion_h1(s)  H1: cuándo se levantó la última suspensión (exige mfa después)
 """
 
 from django.db.models import Q
@@ -14,6 +16,9 @@ from django.utils import timezone
 
 from .models import (
     DIAS_MAXIMOS_VENTANA,
+    Alerta,
+    ControlHBAC,
+    EstadoAlerta,
     DispositivoCampo,
     EstadoCuenta,
     EstadoDispositivo,
@@ -102,3 +107,22 @@ def metadatos_factores(usuario) -> list[dict]:
         .order_by("created_at")
         .values_list("type", "created_at", "last_used_at")
     ]
+
+
+def suspendido_h1(usuario) -> bool:
+    """H1: mientras haya una alerta H1 ABIERTA, se niegan las lecturas de O1 y O4 del sujeto."""
+    return Alerta.objects.filter(
+        sujeto_id=getattr(usuario, "pk", usuario), control=ControlHBAC.H1, estado=EstadoAlerta.ABIERTA
+    ).exists()
+
+
+def ultima_resolucion_h1(usuario):
+    """Momento en que se resolvió la última alerta H1 del sujeto (o None)."""
+    return (
+        Alerta.objects.filter(
+            sujeto_id=getattr(usuario, "pk", usuario), control=ControlHBAC.H1, estado=EstadoAlerta.RESUELTA
+        )
+        .order_by("-resuelta_en")
+        .values_list("resuelta_en", flat=True)
+        .first()
+    )

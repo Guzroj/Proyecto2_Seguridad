@@ -19,9 +19,10 @@ asignar_rol, retirar_rol, autorizar_solicitud y rechazar_solicitud; C14
 (GC·O7a AU) en aprobar_ventana; C18 (AC·O7c CR, RV) en registrar_dispositivo y
 revocar_dispositivo; C17 (AC·O7d SO; GC·O7d AU, RE) en
 solicitar_restablecimiento, autorizar_restablecimiento y
-rechazar_restablecimiento. Estos sí autorizan con el motor y registran el
+rechazar_restablecimiento; C22 (GC·O9 RS) en resolver_alerta. Estos sí autorizan con el motor y registran el
 evento en la bitácora. procesar_ventanas es la tarea diaria (proceso sin
 usuario): activa las cuentas AE el día de inicio y da de baja las vencidas.
+crear_alerta es la vía del motor HBAC (proceso) para crear en O9.
 """
 
 from django.contrib.auth.tokens import default_token_generator
@@ -45,7 +46,10 @@ from nucleo.transicion import bloquear, transicion
 from . import llaves, selectores, sesion
 from .models import (
     DIAS_MAXIMOS_VENTANA,
+    Alerta,
+    ControlHBAC,
     DispositivoCampo,
+    EstadoAlerta,
     EstadoCuenta,
     EstadoDispositivo,
     EstadoRestablecimiento,
@@ -53,6 +57,7 @@ from .models import (
     EstadoVentana,
     MetodoVerificacion,
     MotivoCierre,
+    PrioridadAlerta,
     RestablecimientoFactor,
     RolUsuario,
     SolicitudRol,
@@ -743,3 +748,93 @@ def rechazar_restablecimiento(usuario, restablecimiento, *, motivo) -> Restablec
     r.save(update_fields=["estado", "resuelto_por", "resuelto_en", "motivo_rechazo"])
     _evento_restablecimiento(usuario, Accion.FACTOR_RECHAZAR_RESTABLECIMIENTO, r)
     return r
+
+
+# ===========================================================================
+# O9 · Alertas: el motor HBAC crea (proceso); C22 · GC·O9 RS
+# ===========================================================================
+CLAVES_DETALLE_ALERTA = {"accion", "recurso_tipo", "n", "umbral", "media", "fuera_de_horario", "registros"}
+VENTANA_AGRUPACION = timedelta(minutes=60)
+
+
+def _detalle_alerta(detalle) -> dict:
+    """Lista blanca: solo la acción y contadores, nunca datos personales ni del recurso."""
+    detalle = detalle or {}
+    if not isinstance(detalle, dict) or set(detalle) - CLAVES_DETALLE_ALERTA:
+        raise DatoInvalido(f"detalle: solo {', '.join(sorted(CLAVES_DETALLE_ALERTA))}.")
+    for clave, valor in detalle.items():
+        if isinstance(valor, bool) or isinstance(valor, (int, float)):
+            continue
+        if isinstance(valor, str) and len(valor) <= 100:
+            continue
+        raise DatoInvalido(f"detalle.{clave}: número, booleano o texto corto.")
+    return detalle
+
+
+def crear_alerta(sujeto, control, *, detalle=None) -> tuple[Alerta, bool]:
+    """
+    Motor HBAC (proceso, sin autorización humana): crea una alerta en O9 sobre
+    `sujeto` y devuelve (alerta, creada). No duplica:
+      - H1: si ya hay una abierta, el sujeto ya está suspendido;
+      - H2/H3: si hay una abierta del mismo control creada hace menos de 60 min.
+    Cada ocurrencia igual queda en la bitácora con más detalle (H2).
+    Quien la llama en una petición negada (H1) debe hacerlo fuera de la
+    transacción que se revierte, como el registro de negaciones.
+    """
+    if control not in ControlHBAC.values:
+        raise DatoInvalido(f"Control desconocido: {control!r}.")
+    detalle = _detalle_alerta(detalle)
+    sujeto_id = getattr(sujeto, "pk", sujeto)
+    abiertas = Alerta.objects.filter(sujeto_id=sujeto_id, control=control, estado=EstadoAlerta.ABIERTA)
+    if control != ControlHBAC.H1:
+        abiertas = abiertas.filter(creada_en__gte=timezone.now() - VENTANA_AGRUPACION)
+    existente = abiertas.order_by("-creada_en").first()
+    if existente is None:
+        prioridad = PrioridadAlerta.NORMAL if control == ControlHBAC.H3 else PrioridadAlerta.ALTA
+        try:
+            with transaction.atomic():
+                alerta = Alerta.objects.create(sujeto_id=sujeto_id, control=control, prioridad=prioridad,
+                                               detalle=detalle)
+        except IntegrityError:
+            # Otra petición simultánea abrió la H1 primero.
+            existente = Alerta.objects.get(sujeto_id=sujeto_id, control=control, estado=EstadoAlerta.ABIERTA)
+        else:
+            ganchos.registrar_evento(
+                actor=None, accion=Accion.ALERTA_CREAR, recurso_tipo="alerta", recurso_id=str(alerta.pk),
+                despues={"sujeto": sujeto_id, "control": control, "prioridad": prioridad, **detalle},
+                detalle="motor HBAC",
+            )
+            return alerta, True
+    ganchos.registrar_evento(
+        actor=None, accion=Accion.ALERTA_CREAR, recurso_tipo="alerta", recurso_id=str(existente.pk),
+        despues={"sujeto": sujeto_id, "control": control, "repetida": True, **detalle},
+        detalle="motor HBAC: ocurrencia agrupada en una alerta abierta",
+    )
+    return existente, False
+
+
+@transicion(Accion.ALERTA_RESOLVER, "alerta")
+def resolver_alerta(usuario, alerta, *, motivo) -> Alerta:
+    """
+    C22: alerta.sujeto ≠ s ∧ motivo ≠ ''. Si es H1, levanta la suspensión; la
+    primera lectura posterior del sujeto exige segundo factor (mfa.exige_mfa_tras_h1).
+    """
+    motivo = _texto(motivo, "motivo", 500)
+    if not motivo:
+        raise DatoInvalido("motivo: requerido.")
+    alerta = bloquear(Alerta, alerta)
+    ganchos.autorizar(usuario, Accion.ALERTA_RESOLVER, alerta)
+    if alerta.estado != EstadoAlerta.ABIERTA:
+        raise TransicionInvalida("La alerta ya está resuelta.")
+    if alerta.sujeto_id == usuario.pk:
+        raise SeparacionDeFunciones("Nadie resuelve una alerta sobre sí mismo (V14).")
+    alerta.estado = EstadoAlerta.RESUELTA
+    alerta.resuelta_por = usuario
+    alerta.resuelta_en = timezone.now()
+    alerta.motivo_resolucion = motivo
+    alerta.save(update_fields=["estado", "resuelta_por", "resuelta_en", "motivo_resolucion"])
+    ganchos.registrar_evento(
+        actor=usuario, accion=Accion.ALERTA_RESOLVER, recurso_tipo="alerta", recurso_id=str(alerta.pk),
+        despues={"sujeto": alerta.sujeto_id, "control": alerta.control, "levanta_suspension": alerta.bloqueante},
+    )
+    return alerta

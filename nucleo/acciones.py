@@ -64,3 +64,7 @@ class Accion:
     FACTOR_SOLICITAR_RESTABLECIMIENTO = "factor:solicitar_restablecimiento"    # AC·O7d SO (C17)
     FACTOR_AUTORIZAR_RESTABLECIMIENTO = "factor:autorizar_restablecimiento"    # GC·O7d AU (C17)
     FACTOR_RECHAZAR_RESTABLECIMIENTO = "factor:rechazar_restablecimiento"      # GC·O7d RE (C17)
+
+    # O9 · Alertas
+    ALERTA_CREAR = "alerta:crear"                # Motor HBAC (proceso): crea en O9
+    ALERTA_RESOLVER = "alerta:resolver"          # GC·O9 RS (C22)

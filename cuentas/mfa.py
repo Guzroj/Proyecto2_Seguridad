@@ -12,6 +12,8 @@ Segundo factor (O7d) y reautenticación.
   - RG6: si el motor responde ReautenticacionRequerida, se redirige al reto de
     segundo factor y, al superarlo, se vuelve a la página pedida.
   - Tras cada reautenticación se renueva el identificador de sesión.
+  - H1: tras levantarse una suspensión, la primera lectura exige un segundo
+    factor posterior a la resolución (exige_mfa_tras_h1).
   - Activar TOTP exige un código válido: cuenta como segundo factor reciente
     (no se vuelve a pedir otro para ver los códigos de recuperación recién
     generados) y también renueva el identificador.
@@ -55,6 +57,27 @@ def edad_mfa(request) -> float | None:
     if not momentos:
         return None
     return max(0.0, time.time() - max(momentos))
+
+
+def ultimo_mfa(request) -> float | None:
+    """Instante (epoch) del último segundo factor de esta sesión; None si nunca."""
+    edad = edad_mfa(request)
+    return None if edad is None else time.time() - edad
+
+
+def exige_mfa_tras_h1(request) -> bool:
+    """
+    H1: "la primera lectura posterior exige mfa". Verdadero si la suspensión
+    del sujeto se levantó después de su último segundo factor en esta sesión.
+    Al reautenticarse, deja de exigirse.
+    """
+    from .selectores import ultima_resolucion_h1
+
+    resuelta = ultima_resolucion_h1(request.user)
+    if resuelta is None:
+        return False
+    momento = ultimo_mfa(request)
+    return momento is None or momento < resuelta.timestamp()
 
 
 def mfa_reciente(request) -> bool:

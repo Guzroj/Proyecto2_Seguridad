@@ -365,6 +365,71 @@ class RestablecimientoFactor(models.Model):
 
 
 # ---------------------------------------------------------------------------
+# O9 · Alertas de comportamiento (HBAC, C22)
+# ---------------------------------------------------------------------------
+class ControlHBAC(models.TextChoices):
+    H1 = "H1", "H1 · Frecuencia de lecturas"
+    H2 = "H2", "H2 · Acceso fuera de horario"
+    H3 = "H3", "H3 · Exportación masiva"
+
+
+class PrioridadAlerta(models.TextChoices):
+    ALTA = "ALTA", "Alta"
+    NORMAL = "NORMAL", "Normal"
+
+
+class EstadoAlerta(models.TextChoices):
+    ABIERTA = "ABIERTA", "Abierta"
+    RESUELTA = "RESUELTA", "Resuelta"
+
+
+class Alerta(models.Model):
+    """
+    La crea el motor HBAC (proceso, no persona) en la petición del sujeto que la
+    provoca; solo la resuelve un GC distinto del sujeto, con motivo (C22).
+    Una alerta H1 abierta es bloqueante: suspende las lecturas de O1 y O4 del
+    sujeto hasta que se resuelva. Nunca se borra.
+    """
+
+    sujeto = models.ForeignKey(Usuario, on_delete=models.PROTECT, related_name="alertas")
+    control = models.CharField(max_length=2, choices=ControlHBAC.choices)
+    prioridad = models.CharField(max_length=6, choices=PrioridadAlerta.choices)
+    estado = models.CharField(max_length=8, choices=EstadoAlerta.choices, default=EstadoAlerta.ABIERTA)
+    detalle = models.JSONField(default=dict, blank=True, help_text="Solo contadores y la acción; sin datos personales.")
+    creada_en = models.DateTimeField(auto_now_add=True)
+    resuelta_por = models.ForeignKey(Usuario, on_delete=models.PROTECT, related_name="+", null=True, blank=True)
+    resuelta_en = models.DateTimeField(null=True, blank=True)
+    motivo_resolucion = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        verbose_name = "alerta"
+        verbose_name_plural = "alertas"
+        ordering = ["-creada_en"]
+        indexes = [models.Index(fields=["sujeto", "control", "estado"], name="alerta_sujeto_control")]
+        constraints = [
+            # Una sola suspensión H1 abierta por sujeto.
+            models.UniqueConstraint(
+                fields=["sujeto"], condition=Q(control="H1", estado="ABIERTA"), name="alerta_h1_una_abierta"
+            ),
+            models.CheckConstraint(
+                condition=Q(estado="ABIERTA", resuelta_por__isnull=True, resuelta_en__isnull=True,
+                            motivo_resolucion="")
+                | (Q(estado="RESUELTA", resuelta_por__isnull=False, resuelta_en__isnull=False)
+                   & ~Q(motivo_resolucion="")),
+                name="alerta_resolucion_coherente",
+            ),
+            models.CheckConstraint(condition=~Q(resuelta_por=models.F("sujeto")), name="alerta_resuelve_otro"),
+        ]
+
+    @property
+    def bloqueante(self) -> bool:
+        return self.control == ControlHBAC.H1
+
+    def __str__(self) -> str:
+        return f"{self.control} · {self.sujeto} ({self.estado})"
+
+
+# ---------------------------------------------------------------------------
 # O7a · Sesiones propias
 # ---------------------------------------------------------------------------
 class MotivoCierre(models.TextChoices):
