@@ -45,3 +45,9 @@ class Accion:
     CUENTA_CREAR = "cuenta:crear"                # AC·O7a CR (C15)
     CUENTA_MODIFICAR = "cuenta:modificar"        # AC·O7a MO (C15)
     CUENTA_BAJA = "cuenta:baja"                  # AC·O7a BA (C15)
+
+    # O7b · Roles
+    ROL_ASIGNAR = "rol:asignar"                  # AC·O7b AR (C7)
+    ROL_RETIRAR = "rol:retirar"                  # AC·O7b RR (C7)
+    ROL_AUTORIZAR = "rol:autorizar"              # GC·O7b AU (C7: GC/AE)
+    ROL_RECHAZAR = "rol:rechazar"                # GC·O7b RE (C7: GC/AE)

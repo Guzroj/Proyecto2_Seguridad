@@ -124,6 +124,69 @@ class RolUsuario(models.Model):
         return f"{self.usuario} · {self.rol}"
 
 
+class TipoSolicitudRol(models.TextChoices):
+    ASIGNAR = "ASIGNAR", "Asignar rol"
+    RETIRAR = "RETIRAR", "Retirar rol"
+
+
+class EstadoSolicitudRol(models.TextChoices):
+    SOLICITADA = "SOLICITADA", "Solicitada"
+    AUTORIZADA = "AUTORIZADA", "Autorizada"
+    RECHAZADA = "RECHAZADA", "Rechazada"
+
+
+class SolicitudRol(models.Model):
+    """
+    C7: asignar o retirar GC o AE no tiene efecto hasta que un GC distinto del
+    solicitante y de la persona destino lo autorice. Nunca se borra: queda
+    como historial de quién pidió y quién resolvió.
+    """
+
+    usuario = models.ForeignKey(Usuario, on_delete=models.PROTECT, related_name="solicitudes_rol")
+    rol = models.CharField(max_length=2, choices=Rol.choices)
+    tipo = models.CharField(max_length=7, choices=TipoSolicitudRol.choices)
+    estado = models.CharField(
+        max_length=10, choices=EstadoSolicitudRol.choices, default=EstadoSolicitudRol.SOLICITADA
+    )
+    solicitada_por = models.ForeignKey(Usuario, on_delete=models.PROTECT, related_name="+")
+    solicitada_en = models.DateTimeField(auto_now_add=True)
+    resuelta_por = models.ForeignKey(
+        Usuario, on_delete=models.PROTECT, related_name="+", null=True, blank=True
+    )
+    resuelta_en = models.DateTimeField(null=True, blank=True)
+    motivo = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        verbose_name = "solicitud de rol"
+        verbose_name_plural = "solicitudes de rol"
+        ordering = ["-solicitada_en"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["usuario", "rol"],
+                condition=Q(estado="SOLICITADA"),
+                name="solicitudrol_una_en_curso",
+            ),
+            models.CheckConstraint(
+                condition=Q(rol__in=sorted(roles.ROLES_CON_DOBLE_APROBACION)),
+                name="solicitudrol_solo_roles_con_doble_aprobacion",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(estado="SOLICITADA", resuelta_por__isnull=True, resuelta_en__isnull=True)
+                    | (~Q(estado="SOLICITADA") & Q(resuelta_por__isnull=False, resuelta_en__isnull=False))
+                ),
+                name="solicitudrol_resolucion_coherente",
+            ),
+            models.CheckConstraint(
+                condition=~Q(resuelta_por=models.F("solicitada_por")) & ~Q(resuelta_por=models.F("usuario")),
+                name="solicitudrol_resuelve_otra_persona",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.tipo} {self.rol} · {self.usuario} ({self.estado})"
+
+
 # ---------------------------------------------------------------------------
 # O7a · Sesiones propias
 # ---------------------------------------------------------------------------

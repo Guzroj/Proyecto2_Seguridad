@@ -14,14 +14,15 @@ duplicados, pares excluyentes E) y dejan la autorización, la doble aprobación
 de GC/AE y el cierre de sesiones a los servicios de AR/RR (C7).
 
 C15 (AC·O7a CR, MO, BA) se implementa en crear_cuenta, modificar_cuenta,
-dar_de_baja y enlace_activacion: estos sí autorizan con el motor y registran el
-evento en la bitácora.
+dar_de_baja y enlace_activacion; C7 (AC·O7b AR, RR; GC·O7b AU, RE) en
+asignar_rol, retirar_rol, autorizar_solicitud y rechazar_solicitud. Estos sí
+autorizan con el motor y registran el evento en la bitácora.
 """
 
 from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
@@ -35,7 +36,15 @@ from nucleo.errores import DatoInvalido, SeparacionDeFunciones, TransicionInvali
 from nucleo.transicion import bloquear, transicion
 
 from . import selectores, sesion
-from .models import EstadoCuenta, MotivoCierre, RolUsuario, Usuario
+from .models import (
+    EstadoCuenta,
+    EstadoSolicitudRol,
+    MotivoCierre,
+    RolUsuario,
+    SolicitudRol,
+    TipoSolicitudRol,
+    Usuario,
+)
 
 TRANSICIONES: dict[str, frozenset[str]] = {
     EstadoCuenta.PENDIENTE: frozenset({EstadoCuenta.ACTIVA, EstadoCuenta.INACTIVA}),
@@ -193,8 +202,9 @@ def crear_cuenta(usuario, *, username, rol, first_name="", last_name="", email="
     """
     C15 CR. La cuenta nace sin contraseña utilizable: la persona la fija con el
     enlace de activación (enlace_activacion), que AC le entrega por otro canal.
-    Con rol GC o AE queda PENDIENTE (sin rol) hasta la doble aprobación (C7) o la
-    ventana de auditoría (C14). Con otro rol queda ACTIVA con ese rol.
+    Con rol GC queda PENDIENTE (sin rol) con una solicitud que otro GC autoriza
+    (C7); con AE, PENDIENTE hasta su ventana de auditoría (C14). Con otro rol
+    queda ACTIVA con ese rol.
     """
     if not roles.es_rol(rol):
         raise DatoInvalido(f"Rol desconocido: {rol!r}.")
@@ -206,7 +216,10 @@ def crear_cuenta(usuario, *, username, rol, first_name="", last_name="", email="
         "email": _correo(email),
     }
     cuenta = Usuario.objects.create_user(password=None, **datos)
-    if rol not in roles.ROLES_CON_DOBLE_APROBACION:
+    if rol == roles.GC:
+        # C7: la cuenta se activa cuando otro GC autoriza la solicitud.
+        _solicitar(usuario, cuenta, rol, TipoSolicitudRol.ASIGNAR)
+    elif rol != roles.AE:  # AE: la activa su ventana de auditoría (C14)
         cuenta, _ = cambiar_estado(cuenta, EstadoCuenta.ACTIVA)
         agregar_rol(cuenta, rol)
     _evento(usuario, Accion.CUENTA_CREAR, cuenta, despues={"estado": cuenta.estado, "rol": rol})
@@ -290,3 +303,136 @@ def establecer_primera_clave(cuenta, clave: str) -> Usuario:
         cuenta.set_password(clave)
         cuenta.save(update_fields=["password"])
     return cuenta
+
+
+# ===========================================================================
+# C7 · AC·O7b AR, RR; GC·O7b AU, RE
+# ===========================================================================
+def _evento_rol(usuario, accion, cuenta, rol, **extra):
+    ganchos.registrar_evento(
+        actor=usuario,
+        accion=accion,
+        recurso_tipo="rol",
+        recurso_id=str(cuenta.pk),
+        despues={"rol": rol, **extra},
+    )
+
+
+def _rol_valido(rol) -> str:
+    if not roles.es_rol(rol):
+        raise DatoInvalido(f"Rol desconocido: {rol!r}.")
+    return rol
+
+
+def _exigir_sin_conflictos(cuenta, rol) -> None:
+    # Se valida al pedir y se reevalúa al hacerse efectiva (agregar_rol).
+    vigentes = selectores.roles_vigentes(cuenta)
+    if rol in vigentes:
+        raise TransicionInvalida(f"La cuenta ya tiene el rol {rol}.")
+    choque = roles.conflictos(rol, vigentes)
+    if choque:
+        raise SeparacionDeFunciones(f"El rol {rol} es excluyente con {', '.join(sorted(choque))}.")
+
+
+def _solicitar(usuario, cuenta, rol, tipo) -> SolicitudRol:
+    try:
+        with transaction.atomic():
+            return SolicitudRol.objects.create(usuario=cuenta, rol=rol, tipo=tipo, solicitada_por=usuario)
+    except IntegrityError:
+        raise TransicionInvalida(f"Ya hay una solicitud en curso del rol {rol} para esta cuenta.")
+
+
+@transicion(Accion.ROL_ASIGNAR, "rol")
+def asignar_rol(usuario, cuenta, rol) -> RolUsuario | SolicitudRol:
+    """
+    C7 AR: u ≠ s, cuenta ACTIVA y sin roles excluyentes (E). GC y AE quedan como
+    solicitud hasta que un GC la autorice; los demás roles tienen efecto ya y se
+    cierran las sesiones de la cuenta.
+    """
+    _rol_valido(rol)
+    cuenta = bloquear(Usuario, cuenta)
+    ganchos.autorizar(usuario, Accion.ROL_ASIGNAR, cuenta, {"rol": rol})
+    _exigir_otra_cuenta(usuario, cuenta)
+    if cuenta.estado != EstadoCuenta.ACTIVA:
+        raise TransicionInvalida(f"Solo se asignan roles a cuentas ACTIVA (esta está {cuenta.estado}).")
+    _exigir_sin_conflictos(cuenta, rol)
+    if rol in roles.ROLES_CON_DOBLE_APROBACION:
+        solicitud = _solicitar(usuario, cuenta, rol, TipoSolicitudRol.ASIGNAR)
+        _evento_rol(usuario, Accion.ROL_ASIGNAR, cuenta, rol, solicitud=solicitud.pk)
+        return solicitud
+    pertenencia = agregar_rol(cuenta, rol)
+    cerradas = sesion.cerrar_sesiones(cuenta)
+    _evento_rol(usuario, Accion.ROL_ASIGNAR, cuenta, rol, sesiones_cerradas=cerradas)
+    return pertenencia
+
+
+@transicion(Accion.ROL_RETIRAR, "rol")
+def retirar_rol(usuario, cuenta, rol) -> RolUsuario | SolicitudRol:
+    """C7 RR: u ≠ s. GC y AE quedan como solicitud; los demás se retiran ya y se cierran sus sesiones."""
+    _rol_valido(rol)
+    cuenta = bloquear(Usuario, cuenta)
+    ganchos.autorizar(usuario, Accion.ROL_RETIRAR, cuenta, {"rol": rol})
+    _exigir_otra_cuenta(usuario, cuenta)
+    if rol not in selectores.roles_vigentes(cuenta):
+        raise TransicionInvalida(f"La cuenta no tiene el rol {rol} vigente.")
+    if rol in roles.ROLES_CON_DOBLE_APROBACION:
+        solicitud = _solicitar(usuario, cuenta, rol, TipoSolicitudRol.RETIRAR)
+        _evento_rol(usuario, Accion.ROL_RETIRAR, cuenta, rol, solicitud=solicitud.pk)
+        return solicitud
+    pertenencia = terminar_rol(cuenta, rol)
+    cerradas = sesion.cerrar_sesiones(cuenta)
+    _evento_rol(usuario, Accion.ROL_RETIRAR, cuenta, rol, sesiones_cerradas=cerradas)
+    return pertenencia
+
+
+def _resolver(usuario, solicitud, accion):
+    solicitud = bloquear(SolicitudRol, solicitud)
+    ganchos.autorizar(usuario, accion, solicitud)
+    if solicitud.estado != EstadoSolicitudRol.SOLICITADA:
+        raise TransicionInvalida(f"La solicitud ya está {solicitud.estado}.")
+    if usuario.pk in (solicitud.solicitada_por_id, solicitud.usuario_id):
+        raise SeparacionDeFunciones("Resuelve un GC distinto de quien la pidió y de la persona destino.")
+    return solicitud
+
+
+def _cerrar_solicitud(usuario, solicitud, estado, motivo="") -> None:
+    solicitud.estado = estado
+    solicitud.resuelta_por = usuario
+    solicitud.resuelta_en = timezone.now()
+    solicitud.motivo = motivo
+    solicitud.save(update_fields=["estado", "resuelta_por", "resuelta_en", "motivo"])
+
+
+@transicion(Accion.ROL_AUTORIZAR, "solicitud_rol")
+def autorizar_solicitud(usuario, solicitud) -> SolicitudRol:
+    """
+    C7 AU: el cambio tiene efecto ahora. E se reevalúa (si en el intervalo la
+    cuenta recibió un rol excluyente, se niega y la solicitud sigue en curso).
+    Una cuenta PENDIENTE creada con rol GC se activa aquí.
+    """
+    solicitud = _resolver(usuario, solicitud, Accion.ROL_AUTORIZAR)
+    cuenta = bloquear(Usuario, solicitud.usuario_id)
+    if cuenta.estado not in (EstadoCuenta.PENDIENTE, EstadoCuenta.ACTIVA):
+        raise TransicionInvalida(f"La cuenta está {cuenta.estado}.")
+    _cerrar_solicitud(usuario, solicitud, EstadoSolicitudRol.AUTORIZADA)
+    if solicitud.tipo == TipoSolicitudRol.ASIGNAR:
+        _exigir_sin_conflictos(cuenta, solicitud.rol)
+        if cuenta.estado == EstadoCuenta.PENDIENTE:
+            cuenta, _ = cambiar_estado(cuenta, EstadoCuenta.ACTIVA)
+        agregar_rol(cuenta, solicitud.rol)
+    else:
+        terminar_rol(cuenta, solicitud.rol)
+    cerradas = sesion.cerrar_sesiones(cuenta)
+    _evento_rol(usuario, Accion.ROL_AUTORIZAR, cuenta, solicitud.rol, solicitud=solicitud.pk,
+                tipo=solicitud.tipo, estado_cuenta=cuenta.estado, sesiones_cerradas=cerradas)
+    return solicitud
+
+
+@transicion(Accion.ROL_RECHAZAR, "solicitud_rol")
+def rechazar_solicitud(usuario, solicitud, *, motivo="") -> SolicitudRol:
+    """C7 RE: la solicitud queda RECHAZADA y nada cambia (una cuenta PENDIENTE sigue PENDIENTE)."""
+    solicitud = _resolver(usuario, solicitud, Accion.ROL_RECHAZAR)
+    _cerrar_solicitud(usuario, solicitud, EstadoSolicitudRol.RECHAZADA, _texto(motivo, "motivo", 500))
+    cuenta = solicitud.usuario
+    _evento_rol(usuario, Accion.ROL_RECHAZAR, cuenta, solicitud.rol, solicitud=solicitud.pk, tipo=solicitud.tipo)
+    return solicitud
