@@ -73,6 +73,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "cuentas.sesion.ControlSesionMiddleware",  # inactividad por rol, 10 h, sesiones cerradas
     "cuentas.mfa.ExigirMFAMiddleware",  # TC/VF/GC/AC sin TOTP solo pueden activarlo; reto RG6
+    "autorizacion.pep.PeticionActualMiddleware",  # el PEP lee la edad del segundo factor de la petición
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
@@ -194,7 +195,8 @@ USE_TZ = True
 # Persona 3 y Persona 4 agregan aquí la ruta de su implementación.
 # ---------------------------------------------------------------------------
 VERDEAZUL_GANCHOS = {
-    # "autorizar": "autorizacion.motor.autorizar",
+    # Motor real (PEP -> servicio autorizador). Se activa al terminar las condiciones C1–C22:
+    # "autorizar": "autorizacion.cliente.autorizar",
     "usuarios_con_rol": "cuentas.roles.usuarios_con_rol",
     # "registrar_evento": "bitacora.servicios.registrar_evento",
     # "on_medicion_aprobada": "certificados.servicios.emitir",

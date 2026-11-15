@@ -68,3 +68,37 @@ class Accion:
     # O9 · Alertas
     ALERTA_CREAR = "alerta:crear"                # Motor HBAC (proceso): crea en O9
     ALERTA_RESOLVER = "alerta:resolver"          # GC·O9 RS (C22)
+
+    # Lecturas (L) y exportaciones (X) de cada columna, para el PEP de las vistas
+    FINCA_LEER = "finca:leer"                    # O1a L
+    PARCELA_LEER = "parcela:leer"                # O1a L
+    PROPIETARIO_LEER = "propietario:leer"        # O1b L
+    PERIODO_LEER = "periodo:leer"                # O2 L
+    ASIGNACION_LEER = "asignacion:leer"          # O3 L
+    MEDICION_LEER = "medicion:leer"              # O4 L
+    ENMIENDA_LEER = "enmienda:leer"              # O5 L
+    CERTIFICADO_LEER = "certificado:leer"        # O6 L
+    CUENTA_LEER = "cuenta:leer"                  # O7a L
+    ROL_LEER = "rol:leer"                        # O7b L
+    DISPOSITIVO_LEER = "dispositivo:leer"        # O7c L
+    FACTOR_LEER = "factor:leer"                  # O7d L (metadatos)
+    BITACORA_LEER = "bitacora:leer"              # O8 L
+    ALERTA_LEER = "alerta:leer"                  # O9 L
+    FINCA_EXPORTAR = "finca:exportar"            # O1a X (AE, C5, H3)
+    PARCELA_EXPORTAR = "parcela:exportar"        # O1a X
+    PROPIETARIO_EXPORTAR = "propietario:exportar"  # O1b X
+    PERIODO_EXPORTAR = "periodo:exportar"        # O2 X
+    ASIGNACION_EXPORTAR = "asignacion:exportar"  # O3 X
+    MEDICION_EXPORTAR = "medicion:exportar"      # O4 X
+    ENMIENDA_EXPORTAR = "enmienda:exportar"      # O5 X
+    CERTIFICADO_EXPORTAR = "certificado:exportar"  # O6 X
+    CUENTA_EXPORTAR = "cuenta:exportar"          # O7a X
+    ROL_EXPORTAR = "rol:exportar"                # O7b X
+    DISPOSITIVO_EXPORTAR = "dispositivo:exportar"  # O7c X
+    FACTOR_EXPORTAR = "factor:exportar"          # O7d X
+    BITACORA_EXPORTAR = "bitacora:exportar"      # O8 X
+    ALERTA_EXPORTAR = "alerta:exportar"          # O9 X
+
+    # Otras celdas que aún no tenían acción
+    FACTOR_REGISTRAR = "factor:registrar"        # Todos·O7d CR (C21)
+    MEDICION_SINCRONIZAR = "medicion:sincronizar"  # GC·O4 SI (C16)
