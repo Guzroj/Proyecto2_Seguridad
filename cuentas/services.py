@@ -19,7 +19,8 @@ asignar_rol, retirar_rol, autorizar_solicitud y rechazar_solicitud; C14
 (GC·O7a AU) en aprobar_ventana; C18 (AC·O7c CR, RV) en registrar_dispositivo y
 revocar_dispositivo; C17 (AC·O7d SO; GC·O7d AU, RE) en
 solicitar_restablecimiento, autorizar_restablecimiento y
-rechazar_restablecimiento; C22 (GC·O9 RS) en resolver_alerta. Estos sí autorizan con el motor y registran el
+rechazar_restablecimiento; C22 (GC·O9 RS) en resolver_alerta; el cierre de la
+baja de C16 (GC·O4 SI) en cerrar_baja_tecnico. Estos sí autorizan con el motor y registran el
 evento en la bitácora. procesar_ventanas es la tarea diaria (proceso sin
 usuario): activa las cuentas AE el día de inicio y da de baja las vencidas.
 crear_alerta es la vía del motor HBAC (proceso) para crear en O9.
@@ -838,3 +839,34 @@ def resolver_alerta(usuario, alerta, *, motivo) -> Alerta:
         despues={"sujeto": alerta.sujeto_id, "control": alerta.control, "levanta_suspension": alerta.bloqueante},
     )
     return alerta
+
+
+# ===========================================================================
+# C16 · GC·O4 SI: sincronización final vacía (cierre de la baja de un técnico)
+# ===========================================================================
+@transicion(Accion.MEDICION_SINCRONIZAR, "cuenta")
+def cerrar_baja_tecnico(usuario, tecnico) -> Usuario:
+    """
+    Sincronización final sin registros pendientes: un GC cierra la baja de un
+    técnico EN_BAJA. Se revocan sus dispositivos (ya no hay nada que recibir de
+    ellos), la cuenta pasa a INACTIVA y se cierran sus sesiones. El GC queda como
+    actor en la bitácora. La sincronización de registros firmados necesita la
+    PWA sin conexión, que no forma parte de esta entrega; el motor ya evalúa su
+    condición (C16 con registro) para cuando exista.
+    """
+    tecnico = bloquear(Usuario, tecnico)
+    ganchos.autorizar(usuario, Accion.MEDICION_SINCRONIZAR, None, {"tecnico": tecnico})
+    _exigir_otra_cuenta(usuario, tecnico)
+    if tecnico.estado != EstadoCuenta.EN_BAJA:
+        raise TransicionInvalida(f"Solo se cierra la baja de una cuenta EN_BAJA (esta está {tecnico.estado}).")
+    revocados = revocar_dispositivos_de(tecnico, por=usuario, motivo="sincronización final")
+    tecnico, anterior = cambiar_estado(tecnico, EstadoCuenta.INACTIVA)
+    cerradas = sesion.cerrar_sesiones(tecnico)
+    ganchos.registrar_evento(
+        actor=usuario, accion=Accion.MEDICION_SINCRONIZAR, recurso_tipo="cuenta", recurso_id=str(tecnico.pk),
+        antes={"estado": anterior},
+        despues={"estado": tecnico.estado, "registros": 0, "dispositivos_revocados": revocados,
+                 "sesiones_cerradas": cerradas},
+        detalle="sincronización final sin registros pendientes",
+    )
+    return tecnico

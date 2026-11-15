@@ -203,17 +203,32 @@ def decidir(datos) -> Decision:
         evaluaciones.append(evaluacion)
 
     if concedida is not None:
-        for prohibicion in PROHIBICIONES:
-            try:
-                veto = prohibicion(solicitud)
-            except Exception:
-                return Decision(NIEGA, "RG5", "No se pudo evaluar una prohibición.")
-            if veto is not None and veto.resultado != CONCEDE:
-                return Decision(veto.resultado, veto.regla, veto.motivo)
+        veto = _veto(solicitud)
+        if veto is not None:
+            return veto
         rol, permiso = concedida
         return Decision(CONCEDE, ",".join(permiso.condiciones) or "matriz",
                         f"{rol}·{objeto} {operacion}", rol=rol, hbac=permiso.hbac)
+    decision = _negacion(solicitud, objeto, operacion, evaluaciones)
+    # Una prohibición también prevalece sobre la razón de una negación (salvo el 404,
+    # que no debe revelar nada del objeto).
+    if decision.resultado != FUERA_DE_ALCANCE:
+        return _veto(solicitud) or decision
+    return decision
 
+
+def _veto(solicitud: Solicitud) -> Decision | None:
+    for prohibicion in PROHIBICIONES:
+        try:
+            veto = prohibicion(solicitud)
+        except Exception:
+            return Decision(NIEGA, "RG5", "No se pudo evaluar una prohibición.")
+        if veto is not None and veto.resultado != CONCEDE:
+            return Decision(veto.resultado, veto.regla, veto.motivo)
+    return None
+
+
+def _negacion(solicitud: Solicitud, objeto: str, operacion: str, evaluaciones: list) -> Decision:
     if not evaluaciones:
         roles = ", ".join(sorted(solicitud.roles)) or "ninguno"
         return Decision(NIEGA, "RG1", f"La matriz no concede {operacion} sobre {objeto} (roles: {roles}).")

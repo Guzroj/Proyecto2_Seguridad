@@ -168,3 +168,170 @@ class C20Tests(Base):
         for rol in ("GC", "TC", "PF"):
             with self.subTest(rol=rol):
                 self.assertDecision(decidir("finca:modificar", rol, finca(propietario=S)), NIEGA, "RG1")
+
+
+# ===========================================================================
+# Paso 14b · O4–O6
+# ===========================================================================
+def medicion(**cambios):
+    base = {"tipo": "medicion", "id": "m1", "estado": "BORRADOR", "autor": S, "autor_original": S,
+            "verificador": None, "version_de": None, "actores": [S], "actores_cadena": [S], "tecnicos": [S],
+            "asignados_vigentes": [S], "propietario": OTRO, "periodo_estado": "ABIERTO", "enmienda_estado": None,
+            "enmienda_en_curso": False, "ultima_aprobada": None}
+    return {**base, **cambios}
+
+
+def decidir_mfa(accion, rol, recurso=None, contexto=None, mfa_edad=None, sujeto=S):
+    return reglas.decidir({"sujeto": {"id": sujeto, "estado": "ACTIVA", "roles": [rol], "mfa_edad": mfa_edad},
+                           "accion": accion, "recurso": recurso, "contexto": contexto or {}})
+
+
+class C1Tests(Base):
+    def test_crear(self):
+        ctx = {"periodo": {"tipo": "periodo", "id": 1, "estado": "ABIERTO"}, "asignados_vigentes": [S]}
+        parcela = finca(tipo="parcela")
+        self.assertDecision(decidir("medicion:crear", "TC", parcela, ctx), CONCEDE, "C1")
+        self.assertDecision(decidir("medicion:crear", "TC", parcela, {**ctx, "asignados_vigentes": [OTRO]}),
+                            FUERA_DE_ALCANCE, "C1")
+        cerrado = {**ctx, "periodo": {"tipo": "periodo", "id": 1, "estado": "EN_VERIFICACION"}}
+        self.assertDecision(decidir("medicion:crear", "TC", parcela, cerrado), NIEGA, "C1")
+
+    def test_modificar_y_enviar(self):
+        concedidos = [medicion(), medicion(estado="DEVUELTA"), medicion(estado="DEVUELTA", periodo_estado="EN_VERIFICACION")]
+        negados = [medicion(periodo_estado="EN_VERIFICACION"),               # BORRADOR fuera de ABIERTO
+                   medicion(estado="ENVIADA"), medicion(version_de="m0"), medicion(asignados_vigentes=[])]
+        for accion in ("medicion:modificar", "medicion:enviar"):
+            for m in concedidos:
+                with self.subTest(accion=accion, m=m["estado"]):
+                    self.assertDecision(decidir(accion, "TC", m), CONCEDE, "C1")
+            for m in negados:
+                with self.subTest(accion=accion, negado=m):
+                    self.assertDecision(decidir(accion, "TC", m), NIEGA, "C1")
+            with self.subTest(accion=accion, ajena=True):
+                self.assertDecision(decidir(accion, "TC", medicion(autor=OTRO)), FUERA_DE_ALCANCE, "C1")
+
+    def test_v2_h4_aprobada_o_periodo_cerrado_no_se_modifica_nunca(self):
+        for m in (medicion(estado="APROBADA"), medicion(estado="DEVUELTA", periodo_estado="CERRADO")):
+            with self.subTest(m=m["estado"]):
+                self.assertDecision(decidir("medicion:modificar", "TC", m), NIEGA, "H4")
+        # Fuera de su alcance sigue siendo 404 (no revela el estado de una medición ajena).
+        self.assertDecision(decidir("medicion:modificar", "TC", medicion(estado="APROBADA", autor=OTRO)),
+                            FUERA_DE_ALCANCE)
+
+    def test_c10_tc_lee_sus_mediciones(self):
+        self.assertDecision(decidir("medicion:leer", "TC", medicion()), CONCEDE, "C10")
+        self.assertDecision(decidir("medicion:leer", "TC", medicion(autor=OTRO)), FUERA_DE_ALCANCE, "C10")
+
+
+class C2Tests(Base):
+    def enviada(self, **cambios):
+        base = dict(estado="ENVIADA", autor=OTRO, autor_original=OTRO, verificador=S, actores=[OTRO],
+                    actores_cadena=[OTRO], tecnicos=[OTRO], asignados_vigentes=[OTRO])
+        return medicion(**{**base, **cambios})
+
+    def test_concede_con_segundo_factor_reciente(self):
+        for accion in ("medicion:aprobar", "medicion:devolver"):
+            with self.subTest(accion=accion):
+                self.assertDecision(decidir_mfa(accion, "VF", self.enviada(), mfa_edad=30), CONCEDE, "C2")
+                self.assertDecision(decidir_mfa(accion, "VF", self.enviada(), mfa_edad=None), "REAUTENTICAR", "C2")
+                self.assertDecision(decidir_mfa(accion, "VF", self.enviada(), mfa_edad=301), "REAUTENTICAR")
+
+    def test_negaciones(self):
+        casos = {
+            "no enviada": self.enviada(estado="DEVUELTA"),
+            "periodo cerrado": self.enviada(periodo_estado="CERRADO"),
+            "versión sin enmienda autorizada": self.enviada(version_de="m0", enmienda_estado="DESCARTADA"),
+            "V4 otro verificador, pero actor": self.enviada(verificador=OTRO, actores=[OTRO, S]),
+            "ya actuó en la cadena": self.enviada(actores_cadena=[OTRO, S]),
+            "V5 fue técnico de la finca y período": self.enviada(tecnicos=[OTRO, S]),
+            "propietario": self.enviada(propietario=S),
+        }
+        for nombre, m in casos.items():
+            with self.subTest(caso=nombre):
+                self.assertDecision(decidir_mfa("medicion:aprobar", "VF", m, mfa_edad=10), NIEGA, "C2")
+
+    def test_v4_medicion_de_otro_verificador_es_404(self):
+        self.assertDecision(decidir_mfa("medicion:aprobar", "VF", self.enviada(verificador=OTRO), mfa_edad=10),
+                            FUERA_DE_ALCANCE, "C2")
+
+    def test_version_con_enmienda_autorizada(self):
+        version = self.enviada(version_de="m0", enmienda_estado="AUTORIZADA", periodo_estado="CERRADO")
+        self.assertDecision(decidir_mfa("medicion:aprobar", "VF", version, mfa_edad=10), CONCEDE)
+
+    def test_no_reta_si_ademas_falla_otra_cosa(self):
+        self.assertDecision(decidir_mfa("medicion:aprobar", "VF", self.enviada(propietario=S)), NIEGA, "C2")
+
+
+class C11C12Tests(Base):
+    def test_c11_solicitar(self):
+        aprobada = medicion(estado="APROBADA", ultima_aprobada="m1")
+        self.assertDecision(decidir("enmienda:solicitar", "TC", aprobada), CONCEDE, "C11")
+        self.assertDecision(decidir("enmienda:solicitar", "TC", medicion(estado="DEVUELTA", periodo_estado="CERRADO")),
+                            CONCEDE)
+        negadas = [medicion(), aprobada | {"enmienda_en_curso": True}, aprobada | {"ultima_aprobada": "m2"},
+                   medicion(version_de="m0", periodo_estado="CERRADO")]
+        for m in negadas:
+            with self.subTest(m=m):
+                self.assertDecision(decidir("enmienda:solicitar", "TC", m), NIEGA, "C11")
+        self.assertDecision(decidir("enmienda:solicitar", "TC", aprobada | {"autor_original": OTRO}),
+                            FUERA_DE_ALCANCE, "C11")
+
+    def test_c11_versión_aprobada_mas_reciente(self):
+        version = medicion(id="m2", version_de="m1", estado="APROBADA", ultima_aprobada="m2")
+        self.assertDecision(decidir("enmienda:solicitar", "TC", version), CONCEDE)
+
+    def test_c12_leer(self):
+        e = {"tipo": "enmienda", "id": 1, "solicitante": S}
+        self.assertDecision(decidir("enmienda:leer", "TC", e), CONCEDE, "C12")
+        self.assertDecision(decidir("enmienda:leer", "TC", {**e, "solicitante": OTRO}), FUERA_DE_ALCANCE)
+
+
+class C3Tests(Base):
+    def enmienda(self, **cambios):
+        base = {"tipo": "enmienda", "id": 1, "estado": "SOLICITADA", "solicitante": OTRO, "m0_estado": "APROBADA",
+                "periodo_estado": "ABIERTO", "actores_m0": [OTRO], "propietario": 50, "justificacion_presente": True}
+        return {**base, **cambios}
+
+    def test_autorizar_y_rechazar(self):
+        for accion in ("enmienda:autorizar", "enmienda:rechazar"):
+            with self.subTest(accion=accion):
+                self.assertDecision(decidir_mfa(accion, "GC", self.enmienda(), mfa_edad=5), CONCEDE, "C3")
+                self.assertDecision(decidir_mfa(accion, "GC", self.enmienda()), "REAUTENTICAR", "C3")
+        self.assertDecision(decidir_mfa("enmienda:autorizar", "GC", self.enmienda(m0_estado="DEVUELTA",
+                                                                                    periodo_estado="CERRADO"),
+                                        mfa_edad=5), CONCEDE)
+
+    def test_negaciones(self):
+        casos = [self.enmienda(estado="AUTORIZADA"), self.enmienda(m0_estado="ENVIADA"), self.enmienda(solicitante=S),
+                 self.enmienda(actores_m0=[OTRO, S]),  # V7: el GC sincronizó la medición
+                 self.enmienda(propietario=S), self.enmienda(justificacion_presente=False)]
+        for e in casos:
+            with self.subTest(e=e):
+                self.assertDecision(decidir_mfa("enmienda:autorizar", "GC", e, mfa_edad=5), NIEGA, "C3")
+
+
+class C16Tests(Base):
+    def tecnico(self, estado="EN_BAJA"):
+        return {"tipo": "usuario", "id": 30, "estado": estado, "roles": ["TC"]}
+
+    def test_sincronizacion_final_vacia(self):
+        self.assertDecision(decidir("medicion:sincronizar", "GC", None, {"tecnico": self.tecnico()}), CONCEDE, "C16")
+        for estado in ("ACTIVA", "INACTIVA", "PENDIENTE"):
+            with self.subTest(estado=estado):
+                self.assertDecision(decidir("medicion:sincronizar", "GC", None, {"tecnico": self.tecnico(estado)}),
+                                    NIEGA, "C16")
+        self.assertDecision(decidir("medicion:sincronizar", "AC", None, {"tecnico": self.tecnico()}), NIEGA, "RG1")
+        self.assertDecision(decidir("medicion:sincronizar", "GC"), NIEGA, "RG5")
+
+    def test_con_registro(self):
+        registro = {"firma_valida": True, "dispositivo_responsable": 30, "parcela_en_paquete": True,
+                    "periodo_estado": "ABIERTO"}
+        ctx = {"tecnico": self.tecnico(), "registro": registro}
+        self.assertDecision(decidir("medicion:sincronizar", "GC", None, ctx), CONCEDE)
+        for cambio in ({"firma_valida": False}, {"firma_valida": "si"}, {"dispositivo_responsable": 31},
+                       {"parcela_en_paquete": False}, {"periodo_estado": "EN_VERIFICACION"}):
+            with self.subTest(cambio=cambio):
+                malo = {**ctx, "registro": {**registro, **cambio}}
+                self.assertDecision(decidir("medicion:sincronizar", "GC", None, malo), NIEGA, "C16")
+        self.assertDecision(decidir("medicion:sincronizar", "GC", None, {**ctx, "registro": {"firma_valida": True}}),
+                            NIEGA, "RG5")

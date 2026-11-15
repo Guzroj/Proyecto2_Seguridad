@@ -10,7 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from autorizacion import roles
-from cuentas import services, sesion
+from cuentas import rls, services, sesion
 from cuentas.models import EstadoCuenta, MotivoCierre, Sesion
 from cuentas.test_rls import RLSBase
 from cuentas.tests import CLAVE, crear_cuenta
@@ -56,7 +56,12 @@ class SesionBase(TestCase):
             r.ultima_actividad = ahora - inactivo
         if desde_inicio is not None:
             r.iniciada_en = ahora - desde_inicio
-        r.save(update_fields=["ultima_actividad", "iniciada_en"])
+        # Simula el reloj: solo la fase 'sistema' puede mover el inicio de una sesión.
+        rls.fijar_contexto(fase="sistema")
+        try:
+            r.save(update_fields=["ultima_actividad", "iniciada_en"])
+        finally:
+            rls.fijar_contexto()
 
     def sigue_dentro(self, cliente) -> bool:
         return cliente.get(INICIO).status_code == 200

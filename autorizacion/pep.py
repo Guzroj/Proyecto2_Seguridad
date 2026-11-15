@@ -139,18 +139,50 @@ def _asignacion(a) -> dict:
     }
 
 
+def _asignados_vigentes(finca_id, periodo_id) -> list:
+    """asig(·, f, p): técnicos con asignación vigente para esa finca y período."""
+    from mediciones.models import Asignacion
+
+    return sorted(set(Asignacion.objects.filter(
+        finca_id=finca_id, periodo_id=periodo_id, vigente_hasta__isnull=True).values_list("tecnico_id", flat=True)))
+
+
 def _medicion(m) -> dict:
     from catalogo.models import Parcela
-    from mediciones.models import MedicionActor, Periodo
+    from mediciones import selectores
+    from mediciones.models import Enmienda, MedicionActor, Periodo
 
-    finca = Parcela.objects.filter(pk=m.parcela_id).values_list("finca_id", "finca__propietario_id").first()
+    finca_id, propietario = Parcela.objects.filter(pk=m.parcela_id).values_list(
+        "finca_id", "finca__propietario_id").first() or (None, None)
+    enmienda = Enmienda.objects.filter(version_id=m.pk).values_list("estado", flat=True).first()
+    ultima = selectores.ultima_aprobada(m)
     return {
-        "estado": m.estado, "autor": m.autor_id, "verificador": m.verificador_id,
-        "actores": sorted(set(MedicionActor.objects.filter(medicion_id=m.pk).values_list("usuario_id", flat=True))),
-        "parcela": m.parcela_id, "finca": finca[0] if finca else None, "propietario": finca[1] if finca else None,
-        "periodo": m.periodo_id,
-        "periodo_estado": Periodo.objects.filter(pk=m.periodo_id).values_list("estado", flat=True).first(),
+        "estado": m.estado, "autor": m.autor_id, "autor_original": selectores.raiz(m).autor_id,
+        "verificador": m.verificador_id,
         "version_de": str(m.version_de_id) if m.version_de_id else None,
+        "actores": sorted(set(MedicionActor.objects.filter(medicion_id=m.pk).values_list("usuario_id", flat=True))),
+        "actores_cadena": sorted(selectores.actores_cadena(m)),
+        "tecnicos": sorted(selectores.tecnicos(finca_id, m.periodo_id)),
+        "asignados_vigentes": _asignados_vigentes(finca_id, m.periodo_id),
+        "parcela": m.parcela_id, "finca": finca_id, "propietario": propietario, "periodo": m.periodo_id,
+        "periodo_estado": Periodo.objects.filter(pk=m.periodo_id).values_list("estado", flat=True).first(),
+        "enmienda_estado": enmienda,
+        "enmienda_en_curso": selectores.enmienda_en_curso(m) is not None,
+        "ultima_aprobada": str(ultima.pk) if ultima else None,
+    }
+
+
+def _enmienda(e) -> dict:
+    from mediciones import selectores
+    from mediciones.models import Medicion
+
+    m0 = Medicion.objects.select_related("periodo", "parcela__finca").get(pk=e.medicion_original_id)
+    return {
+        "estado": e.estado, "solicitante": e.solicitante_id, "medicion": str(m0.pk),
+        "m0_estado": m0.estado, "periodo_estado": m0.periodo.estado,
+        "actores_m0": sorted(selectores.actores_cadena(m0)),
+        "propietario": m0.parcela.finca.propietario_id,
+        "justificacion_presente": bool((e.justificacion or "").strip()),  # nunca el texto
     }
 
 
@@ -162,6 +194,21 @@ ATRIBUTOS = {
     "periodo": _periodo,
     "asignacion": _asignacion,
     "medicion": _medicion,
+    "enmienda": _enmienda,
+}
+
+
+def _contexto_medicion_crear(recurso, contexto: dict) -> dict:
+    """C1 CR: el recurso es la parcela y el contexto trae el período; asig(s, f, p) los combina."""
+    periodo = (contexto or {}).get("periodo")
+    if recurso is None or periodo is None or not hasattr(recurso, "finca_id"):
+        return {}
+    return {"asignados_vigentes": _asignados_vigentes(recurso.finca_id, getattr(periodo, "pk", periodo))}
+
+
+# Atributos que dependen de la combinación recurso + contexto de una acción concreta.
+CONTEXTO_POR_ACCION = {
+    "medicion:crear": _contexto_medicion_crear,
 }
 
 
@@ -195,9 +242,13 @@ def atributos_contexto(contexto: dict) -> dict:
 
 
 def construir_solicitud(usuario, accion: str, recurso=None, contexto: dict | None = None) -> dict:
+    datos_contexto = atributos_contexto(contexto)
+    extra = CONTEXTO_POR_ACCION.get(accion)
+    if extra is not None:
+        datos_contexto.update(extra(recurso, contexto))
     return {
         "sujeto": atributos_sujeto(usuario),
         "accion": accion,
         "recurso": atributos_recurso(recurso),
-        "contexto": atributos_contexto(contexto),
+        "contexto": datos_contexto,
     }
