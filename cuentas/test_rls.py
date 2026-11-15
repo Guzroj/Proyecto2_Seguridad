@@ -24,7 +24,7 @@ class RLSBase(TestCase):
         self.ana = crear_cuenta("ana", EstadoCuenta.ACTIVA)
         self.beto = crear_cuenta("beto", EstadoCuenta.ACTIVA)
         self.pendiente = crear_cuenta("pendiente")
-        services.agregar_rol(self.ana, "TC")
+        services.agregar_rol(self.ana, "PF")  # rol sin segundo factor obligatorio
         services.agregar_rol(self.beto, "VF")
         with connection.cursor() as c:
             c.execute(f"CREATE ROLE {ROL} NOLOGIN NOSUPERUSER NOBYPASSRLS")
@@ -131,7 +131,7 @@ class LoginConRLSTests(RLSBase):
             self.assertRedirects(respuesta, reverse("inicio"), fetch_redirect_response=False)
             inicio = self.client.get(reverse("inicio"))
             self.assertContains(inicio, "ana")
-            self.assertContains(inicio, "TC")
+            self.assertContains(inicio, "PF")
 
     def test_login_fallido(self):
         with self.como_app():

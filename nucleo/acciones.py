@@ -40,3 +40,8 @@ class Accion:
     ENMIENDA_SOLICITAR = "enmienda:solicitar"    # TC·O5 SO (C11)
     ENMIENDA_AUTORIZAR = "enmienda:autorizar"    # GC·O5 AU (C3)
     ENMIENDA_RECHAZAR = "enmienda:rechazar"      # GC·O5 RE (C3)
+
+    # O7a · Cuentas
+    CUENTA_CREAR = "cuenta:crear"                # AC·O7a CR (C15)
+    CUENTA_MODIFICAR = "cuenta:modificar"        # AC·O7a MO (C15)
+    CUENTA_BAJA = "cuenta:baja"                  # AC·O7a BA (C15)

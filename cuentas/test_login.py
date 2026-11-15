@@ -38,7 +38,7 @@ class LoginTests(TestCase):
     def setUp(self):
         self.url = reverse("account_login")
         self.ana = crear_cuenta("ana", EstadoCuenta.ACTIVA)
-        services.agregar_rol(self.ana, "TC")
+        services.agregar_rol(self.ana, "PF")  # rol sin segundo factor obligatorio
 
     def entrar(self, username, clave=CLAVE):
         return self.client.post(self.url, {"login": username, "password": clave})
@@ -56,7 +56,7 @@ class LoginTests(TestCase):
         self.assertRedirects(respuesta, reverse("inicio"))
         inicio = self.client.get(reverse("inicio"))
         self.assertContains(inicio, "ana")
-        self.assertContains(inicio, "TC")
+        self.assertContains(inicio, "PF")
 
     def test_clave_incorrecta(self):
         respuesta = self.entrar("ana", "otra-clave-cualquiera")

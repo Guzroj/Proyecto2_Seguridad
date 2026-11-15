@@ -7,6 +7,10 @@ Control de sesión.
   - Los roles NO se copian en la sesión: se leen de la base en cada petición.
   - Toda petición autenticada exige una fila abierta en cuentas.Sesion; cerrar
     las sesiones de un usuario es cerrar esas filas (cerrar_sesiones).
+  - Máximo 2 sesiones simultáneas por usuario (navegador y PWA): al abrir una
+    tercera se cierra la más antigua con motivo FORZADO.
+  - Al cerrar sesión (voluntaria o forzada por el control) la respuesta lleva
+    Clear-Site-Data para que el navegador borre caché, cookies y almacenamiento.
 
 Los tiempos son del servidor y se guardan en la base, no en la cookie.
 """
@@ -18,12 +22,15 @@ from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth import logout
 from django.db import transaction
+from django.shortcuts import redirect
+from django.urls import reverse
 from django.utils import timezone
+from django.views.csrf import csrf_failure
 
 from autorizacion import roles
 
 from . import rls
-from .models import MotivoCierre, Sesion
+from .models import MotivoCierre, Sesion, Usuario
 from .selectores import roles_vigentes
 
 log = logging.getLogger("verdeazul.cuentas")
@@ -38,6 +45,8 @@ INACTIVIDAD_POR_ROL = {
 }
 INACTIVIDAD_SIN_ROL = timedelta(minutes=15)
 MAXIMO_ABSOLUTO = timedelta(hours=10)
+MAX_SESIONES_SIMULTANEAS = 2
+CLEAR_SITE_DATA = '"cache", "cookies", "storage"'
 
 
 def limite_inactividad(roles_del_usuario) -> timedelta:
@@ -53,10 +62,22 @@ def hash_clave(clave_sesion: str) -> str:
 # Registro de sesiones
 # ---------------------------------------------------------------------------
 def registrar_inicio(usuario, clave_sesion: str) -> Sesion:
-    ahora = timezone.now()
-    return Sesion.objects.create(
-        usuario=usuario, clave_hash=hash_clave(clave_sesion), iniciada_en=ahora, ultima_actividad=ahora
-    )
+    """Registra la sesión nueva y cierra las más antiguas por encima del máximo simultáneo."""
+    with transaction.atomic():
+        # Bloquear la cuenta serializa ingresos simultáneos del mismo usuario.
+        Usuario.objects.select_for_update().filter(pk=usuario.pk).first()
+        ahora = timezone.now()
+        nueva = Sesion.objects.create(
+            usuario=usuario, clave_hash=hash_clave(clave_sesion), iniciada_en=ahora, ultima_actividad=ahora
+        )
+        sobrantes = list(
+            Sesion.objects.filter(usuario=usuario, cerrada_en__isnull=True)
+            .order_by("-iniciada_en", "-pk")
+            .values_list("pk", flat=True)[MAX_SESIONES_SIMULTANEAS:]
+        )
+        if sobrantes:
+            Sesion.objects.filter(pk__in=sobrantes).update(cerrada_en=ahora, motivo_cierre=MotivoCierre.FORZADO)
+    return nueva
 
 
 def cerrar_registro(clave_sesion: str | None, motivo: str) -> int:
@@ -109,7 +130,10 @@ class ControlSesionMiddleware:
             motivo = self._revisar(request)
             if motivo:
                 self._expulsar(request, motivo)
-        return self.get_response(request)
+        respuesta = self.get_response(request)
+        if getattr(request, "_vz_limpiar_sitio", False):
+            respuesta["Clear-Site-Data"] = CLEAR_SITE_DATA
+        return respuesta
 
     def _revisar(self, request) -> str | None:
         clave = request.session.session_key
@@ -135,3 +159,16 @@ class ControlSesionMiddleware:
         logout(request)
         rls.fijar_contexto()
         messages.info(request, MENSAJES.get(motivo, MENSAJES[MotivoCierre.INVALIDA]))
+
+
+def csrf_fallido(request, reason=""):
+    """
+    CSRF_FAILURE_VIEW. Clear-Site-Data borra la cookie CSRF al salir. Si el
+    formulario de salida se reenvía (doble clic, o el navegador tarda en limpiar
+    la caché) y ya no hay sesión, no hay nada que cerrar: se lleva al login en
+    vez de mostrar un 403. Cualquier otro fallo de CSRF sigue siendo 403.
+    """
+    if request.path == reverse("account_logout") and not request.user.is_authenticated:
+        return redirect("account_login")
+    return csrf_failure(request, reason)
+

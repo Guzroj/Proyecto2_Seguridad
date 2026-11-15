@@ -19,3 +19,5 @@ def registrar_sesion(sender, request, user, **kwargs):
 def cerrar_sesion(sender, request, user, **kwargs):
     if request is not None:
         sesion.cerrar_registro(request.session.session_key, MotivoCierre.SALIDA)
+        # ControlSesionMiddleware agrega Clear-Site-Data a esta respuesta.
+        request._vz_limpiar_sitio = True

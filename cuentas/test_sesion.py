@@ -1,11 +1,15 @@
 """Paso 5 · Inactividad por rol, máximo absoluto de 10 h y cierre de sesiones."""
 
+import base64
+import secrets
 from datetime import timedelta
 
+from allauth.mfa.totp.internal.auth import TOTP
 from django.test import Client, SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from autorizacion import roles
 from cuentas import services, sesion
 from cuentas.models import EstadoCuenta, MotivoCierre, Sesion
 from cuentas.test_rls import RLSBase
@@ -32,6 +36,9 @@ class SesionBase(TestCase):
         u = crear_cuenta(username, EstadoCuenta.ACTIVA)
         for r in roles_usuario:
             services.agregar_rol(u, r)
+        if set(roles_usuario) & roles.ROLES_CON_MFA:
+            # Sin TOTP, ExigirMFAMiddleware llevaría a activarlo (paso 6).
+            TOTP.activate(u, base64.b32encode(secrets.token_bytes(20)).decode())
         return u
 
     def entrar(self, usuario, cliente=None):
@@ -66,7 +73,7 @@ class RegistroTests(SesionBase):
         self.assertEqual(len(r.clave_hash), 64)
 
     def test_login_por_formulario_de_allauth_tambien_registra(self):
-        u = self.crear("ana", "TC")
+        u = self.crear("ana", "PF")
         self.client.post(reverse("account_login"), {"login": "ana", "password": CLAVE})
         self.assertEqual(Sesion.objects.filter(usuario=u, cerrada_en__isnull=True).count(), 1)
 
@@ -201,3 +208,101 @@ class SesionRLSTests(RLSBase):
             list(Sesion.objects.filter(usuario=self.ana).values_list("motivo_cierre", flat=True)),
             [MotivoCierre.SALIDA],
         )
+
+
+class SesionesSimultaneasTests(SesionBase):
+    def test_la_tercera_sesion_cierra_la_mas_antigua(self):
+        ana = self.crear("ana", "TC")
+        c1 = self.entrar(ana, Client())
+        r1 = self.registro(c1)
+        c2 = self.entrar(ana, Client())
+        c3 = self.entrar(ana, Client())
+        r1.refresh_from_db()
+        self.assertEqual(r1.motivo_cierre, MotivoCierre.FORZADO)
+        self.assertFalse(self.sigue_dentro(c1))
+        self.assertTrue(self.sigue_dentro(c2))
+        self.assertTrue(self.sigue_dentro(c3))
+        self.assertEqual(Sesion.objects.filter(usuario=ana, cerrada_en__isnull=True).count(), 2)
+
+    def test_dos_sesiones_conviven(self):
+        ana = self.crear("ana", "TC")
+        c1, c2 = self.entrar(ana, Client()), self.entrar(ana, Client())
+        self.assertTrue(self.sigue_dentro(c1))
+        self.assertTrue(self.sigue_dentro(c2))
+
+    def test_el_limite_es_por_usuario(self):
+        ana = self.crear("ana", "TC")
+        beto = self.crear("beto", "VF")
+        b1, b2 = self.entrar(beto, Client()), self.entrar(beto, Client())
+        self.entrar(ana, Client())
+        self.entrar(ana, Client())
+        self.entrar(ana, Client())
+        self.assertTrue(self.sigue_dentro(b1))
+        self.assertTrue(self.sigue_dentro(b2))
+
+    def test_sesiones_ya_cerradas_no_cuentan(self):
+        ana = self.crear("ana", "TC")
+        c1 = self.entrar(ana, Client())
+        c1.post(reverse("account_logout"))
+        c2, c3 = self.entrar(ana, Client()), self.entrar(ana, Client())
+        self.assertTrue(self.sigue_dentro(c2))
+        self.assertTrue(self.sigue_dentro(c3))
+
+
+class ClearSiteDataTests(SesionBase):
+    ESPERADO = '"cache", "cookies", "storage"'
+
+    def test_logout_envia_clear_site_data(self):
+        self.entrar(self.crear("ana", "TC"))
+        respuesta = self.client.post(reverse("account_logout"))
+        self.assertEqual(respuesta["Clear-Site-Data"], self.ESPERADO)
+
+    def test_cierre_por_inactividad_envia_clear_site_data(self):
+        self.entrar(self.crear("ana", "GC"))
+        self.envejecer(self.client, inactivo=timedelta(minutes=16))
+        respuesta = self.client.get(INICIO)
+        self.assertEqual(respuesta["Clear-Site-Data"], self.ESPERADO)
+
+    def test_sesion_cerrada_a_la_fuerza_envia_clear_site_data(self):
+        ana = self.crear("ana", "TC")
+        self.entrar(ana)
+        sesion.cerrar_sesiones(ana)
+        self.assertEqual(self.client.get(INICIO)["Clear-Site-Data"], self.ESPERADO)
+
+    def test_respuestas_normales_no_lo_envian(self):
+        self.assertNotIn("Clear-Site-Data", self.client.get(reverse("account_login")))
+        respuesta = self.client.post(reverse("account_login"), {"login": "nadie", "password": CLAVE})
+        self.assertNotIn("Clear-Site-Data", respuesta)
+        self.entrar(self.crear("ana", "TC"))
+        self.assertNotIn("Clear-Site-Data", self.client.get(INICIO))
+
+
+class SesionesSimultaneasRLSTests(RLSBase):
+    def test_limite_funciona_con_rls(self):
+        with self.como_app():
+            clientes = [Client(), Client(), Client()]
+            for c in clientes:
+                c.post(reverse("account_login"), {"login": "ana", "password": CLAVE})
+            dentro = [c.get(INICIO).status_code == 200 for c in clientes]
+        self.assertEqual(dentro, [False, True, True])
+
+
+class LogoutSinCSRFTests(SesionBase):
+    """Clear-Site-Data borra la cookie CSRF: reenviar la salida no debe dar 403."""
+
+    def setUp(self):
+        super().setUp()
+        self.cliente = Client(enforce_csrf_checks=True)
+
+    def test_reenviar_la_salida_sin_sesion_lleva_al_login(self):
+        respuesta = self.cliente.post(reverse("account_logout"))
+        self.assertRedirects(respuesta, reverse("account_login"), fetch_redirect_response=False)
+
+    def test_con_sesion_la_salida_sin_csrf_sigue_negada(self):
+        self.cliente.force_login(self.crear("ana", "PF"))
+        self.assertEqual(self.cliente.post(reverse("account_logout")).status_code, 403)
+        self.assertIn("_auth_user_id", self.cliente.session)
+
+    def test_otros_formularios_sin_csrf_siguen_negados(self):
+        respuesta = self.cliente.post(reverse("account_login"), {"login": "x", "password": "y"})
+        self.assertEqual(respuesta.status_code, 403)

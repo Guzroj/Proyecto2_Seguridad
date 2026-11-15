@@ -6,4 +6,4 @@ class CuentasConfig(AppConfig):
     name = 'cuentas'
 
     def ready(self):
-        from . import signals  # noqa: F401  (conecta los receptores de login/logout)
+        from . import mfa, signals  # noqa: F401  (conecta los receptores de login/logout/MFA)

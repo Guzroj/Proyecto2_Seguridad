@@ -27,7 +27,8 @@ class BackendRLS(ModelBackend):
             Usuario().set_password(password)
             return None
 
-        rls.fijar_contexto(usuario_id=usuario_id)
+        # Hasta completar el login (y el segundo factor) solo ve su propia cuenta.
+        rls.fijar_contexto(usuario_id=usuario_id, fase=rls.FASE_PREINGRESO)
         usuario = Usuario._default_manager.filter(pk=usuario_id).first()
         if (
             usuario is not None

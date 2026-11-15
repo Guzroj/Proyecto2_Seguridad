@@ -12,17 +12,30 @@ matriz.
 criterio: aplican las invariantes que valen siempre (rol conocido, sin
 duplicados, pares excluyentes E) y dejan la autorización, la doble aprobación
 de GC/AE y el cierre de sesiones a los servicios de AR/RR (C7).
+
+C15 (AC·O7a CR, MO, BA) se implementa en crear_cuenta, modificar_cuenta,
+dar_de_baja y enlace_activacion: estos sí autorizan con el motor y registran el
+evento en la bitácora.
 """
 
+from django.contrib.auth.tokens import default_token_generator
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.db import transaction
 from django.db.models import Q
+from django.urls import reverse
 from django.utils import timezone
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 
 from autorizacion import roles
+from nucleo import ganchos
+from nucleo.acciones import Accion
 from nucleo.errores import DatoInvalido, SeparacionDeFunciones, TransicionInvalida
-from nucleo.transicion import bloquear
+from nucleo.transicion import bloquear, transicion
 
-from .models import EstadoCuenta, RolUsuario, Usuario
+from . import selectores, sesion
+from .models import EstadoCuenta, MotivoCierre, RolUsuario, Usuario
 
 TRANSICIONES: dict[str, frozenset[str]] = {
     EstadoCuenta.PENDIENTE: frozenset({EstadoCuenta.ACTIVA, EstadoCuenta.INACTIVA}),
@@ -113,3 +126,167 @@ def terminar_rol(usuario, rol: str, *, en=None) -> RolUsuario:
         pertenencia.vigente_hasta = en
         pertenencia.save(update_fields=["vigente_hasta"])
         return pertenencia
+
+
+# ===========================================================================
+# C15 · AC·O7a CR, MO, BA
+# ===========================================================================
+CAMPOS_MODIFICABLES = ("first_name", "last_name", "email")
+
+
+def _evento(usuario, accion, cuenta, antes=None, despues=None, detalle=""):
+    # Sin datos personales en la bitácora: solo id, estado, rol y nombres de campos.
+    ganchos.registrar_evento(
+        actor=usuario,
+        accion=accion,
+        recurso_tipo="cuenta",
+        recurso_id=str(cuenta.pk),
+        antes=antes,
+        despues=despues,
+        detalle=detalle,
+    )
+
+
+def _exigir_otra_cuenta(usuario, cuenta) -> None:
+    # C15: u ≠ s.
+    if cuenta.pk == usuario.pk:
+        raise SeparacionDeFunciones("Nadie gestiona su propia cuenta.")
+
+
+def _texto(valor, nombre: str, maximo: int) -> str:
+    if valor is None:
+        return ""
+    if not isinstance(valor, str):
+        raise DatoInvalido(f"{nombre}: debe ser texto.")
+    valor = valor.strip()
+    if len(valor) > maximo:
+        raise DatoInvalido(f"{nombre}: hasta {maximo} caracteres.")
+    return valor
+
+
+def _correo(valor) -> str:
+    valor = _texto(valor, "email", 254)
+    if valor:
+        try:
+            validate_email(valor)
+        except ValidationError:
+            raise DatoInvalido("email: formato inválido.")
+    return valor
+
+
+def _username(valor) -> str:
+    valor = _texto(valor, "username", 150)
+    if not valor:
+        raise DatoInvalido("username: requerido.")
+    try:
+        Usuario.username_validator(valor)
+    except ValidationError:
+        raise DatoInvalido("username: solo letras, dígitos y @ . + - _")
+    # Sin homónimos que solo difieren en mayúsculas (cuentas nominales inequívocas).
+    if Usuario.objects.filter(username__iexact=valor).exists():
+        raise DatoInvalido("username: ya existe una cuenta con ese nombre.")
+    return valor
+
+
+@transicion(Accion.CUENTA_CREAR, "cuenta")
+def crear_cuenta(usuario, *, username, rol, first_name="", last_name="", email="") -> Usuario:
+    """
+    C15 CR. La cuenta nace sin contraseña utilizable: la persona la fija con el
+    enlace de activación (enlace_activacion), que AC le entrega por otro canal.
+    Con rol GC o AE queda PENDIENTE (sin rol) hasta la doble aprobación (C7) o la
+    ventana de auditoría (C14). Con otro rol queda ACTIVA con ese rol.
+    """
+    if not roles.es_rol(rol):
+        raise DatoInvalido(f"Rol desconocido: {rol!r}.")
+    ganchos.autorizar(usuario, Accion.CUENTA_CREAR, None, {"rol": rol})
+    datos = {
+        "username": _username(username),
+        "first_name": _texto(first_name, "first_name", 150),
+        "last_name": _texto(last_name, "last_name", 150),
+        "email": _correo(email),
+    }
+    cuenta = Usuario.objects.create_user(password=None, **datos)
+    if rol not in roles.ROLES_CON_DOBLE_APROBACION:
+        cuenta, _ = cambiar_estado(cuenta, EstadoCuenta.ACTIVA)
+        agregar_rol(cuenta, rol)
+    _evento(usuario, Accion.CUENTA_CREAR, cuenta, despues={"estado": cuenta.estado, "rol": rol})
+    return cuenta
+
+
+@transicion(Accion.CUENTA_MODIFICAR, "cuenta")
+def modificar_cuenta(usuario, cuenta, **cambios) -> Usuario:
+    """C15 MO: nombre, apellidos y correo. El estado, los roles y la contraseña tienen su propia vía."""
+    cuenta = bloquear(Usuario, cuenta)
+    ganchos.autorizar(usuario, Accion.CUENTA_MODIFICAR, cuenta)
+    _exigir_otra_cuenta(usuario, cuenta)
+    ajenos = set(cambios) - set(CAMPOS_MODIFICABLES)
+    if ajenos:
+        raise DatoInvalido(f"Campos no modificables: {', '.join(sorted(ajenos))}.")
+    if cuenta.estado == EstadoCuenta.INACTIVA:
+        raise TransicionInvalida("Una cuenta INACTIVA no se modifica.")
+    limpios = {
+        campo: _correo(valor) if campo == "email" else _texto(valor, campo, 150)
+        for campo, valor in cambios.items()
+    }
+    modificados = sorted(c for c, v in limpios.items() if getattr(cuenta, c) != v)
+    if not modificados:
+        return cuenta
+    for campo in modificados:
+        setattr(cuenta, campo, limpios[campo])
+    cuenta.save(update_fields=modificados)
+    _evento(usuario, Accion.CUENTA_MODIFICAR, cuenta, despues={"campos": modificados})
+    return cuenta
+
+
+@transicion(Accion.CUENTA_BAJA, "cuenta")
+def dar_de_baja(usuario, cuenta) -> Usuario:
+    """
+    C15 BA: EN_BAJA si quedan registros sin sincronizar (luego C16 la pasa a
+    INACTIVA); si no, INACTIVA. Cierra todas las sesiones de la cuenta.
+    """
+    cuenta = bloquear(Usuario, cuenta)
+    ganchos.autorizar(usuario, Accion.CUENTA_BAJA, cuenta)
+    _exigir_otra_cuenta(usuario, cuenta)
+    if cuenta.estado not in (EstadoCuenta.PENDIENTE, EstadoCuenta.ACTIVA):
+        # EN_BAJA solo pasa a INACTIVA tras la sincronización final (C16).
+        raise TransicionInvalida(f"Una cuenta {cuenta.estado} no se da de baja.")
+    pendiente = cuenta.estado == EstadoCuenta.ACTIVA and selectores.registros_sin_sincronizar(cuenta)
+    nuevo = EstadoCuenta.EN_BAJA if pendiente else EstadoCuenta.INACTIVA
+    cuenta, anterior = cambiar_estado(cuenta, nuevo)
+    cerradas = sesion.cerrar_sesiones(cuenta, MotivoCierre.FORZADO)
+    _evento(usuario, Accion.CUENTA_BAJA, cuenta, antes={"estado": anterior},
+            despues={"estado": nuevo, "sesiones_cerradas": cerradas})
+    return cuenta
+
+
+@transicion(Accion.CUENTA_MODIFICAR, "cuenta")
+def enlace_activacion(usuario, cuenta) -> str:
+    """
+    Ruta de un solo uso para que la persona fije su primera contraseña. Solo se
+    emite mientras la cuenta no tenga contraseña: así AC nunca puede tomar una
+    cuenta que ya está en uso. Deja de servir al fijar la contraseña o al vencer
+    PASSWORD_RESET_TIMEOUT.
+    """
+    cuenta = bloquear(Usuario, cuenta)
+    ganchos.autorizar(usuario, Accion.CUENTA_MODIFICAR, cuenta)
+    _exigir_otra_cuenta(usuario, cuenta)
+    if cuenta.estado not in (EstadoCuenta.PENDIENTE, EstadoCuenta.ACTIVA):
+        raise TransicionInvalida(f"Una cuenta {cuenta.estado} no se activa.")
+    if cuenta.has_usable_password():
+        raise TransicionInvalida("La cuenta ya tiene contraseña.")
+    _evento(usuario, Accion.CUENTA_MODIFICAR, cuenta, detalle="enlace de activación emitido")
+    return reverse(
+        "cuenta_activar",
+        kwargs={"uidb64": urlsafe_base64_encode(force_bytes(cuenta.pk)), "token": default_token_generator.make_token(cuenta)},
+    )
+
+
+def establecer_primera_clave(cuenta, clave: str) -> Usuario:
+    """Pieza de dominio del enlace de activación (la vista ya validó el enlace y la contraseña)."""
+    with transaction.atomic():
+        cuenta = bloquear(Usuario, cuenta)
+        if cuenta.has_usable_password() or cuenta.estado not in (EstadoCuenta.PENDIENTE, EstadoCuenta.ACTIVA):
+            raise TransicionInvalida("El enlace de activación ya no es válido.")
+        cuenta.set_password(clave)
+        cuenta.save(update_fields=["password"])
+    return cuenta

@@ -3,7 +3,9 @@ Contexto de Row Level Security (RLS) en PostgreSQL.
 
 Las políticas de las tablas leen dos variables de la conexión:
   app.usuario_id  sujeto autenticado de la petición (vacío = anónimo)
-  app.fase        'sistema' para procesos sin usuario (tareas, carga inicial)
+  app.fase        'sistema' para procesos sin usuario (tareas, carga inicial);
+                  'preingreso' cuando la contraseña ya se verificó pero falta el
+                  segundo factor: el sujeto solo ve su propia cuenta y sus factores
 
 Django reutiliza conexiones (conn_max_age), así que el contexto se fija al
 empezar CADA petición y se limpia al terminar. Si no se puede limpiar, se cierra
@@ -16,6 +18,7 @@ alcance), no contra un atacante que ya ejecuta SQL arbitrario con ese rol.
 
 import logging
 
+from allauth.account.internal.stagekit import LOGIN_SESSION_KEY
 from django.contrib.auth import SESSION_KEY
 from django.db import DatabaseError, connection
 
@@ -67,6 +70,9 @@ def id_para_login(username: str) -> int | None:
     return fila[0] if fila else None
 
 
+FASE_PREINGRESO = "preingreso"
+
+
 class ContextoRLSMiddleware:
     """
     Va después de AuthenticationMiddleware. El id sale de la sesión del servidor
@@ -79,10 +85,27 @@ class ContextoRLSMiddleware:
 
     def __call__(self, request):
         usuario_id = request.session.get(SESSION_KEY)
-        fijar_contexto(usuario_id=usuario_id)
-        if usuario_id and not request.user.is_authenticated:
-            fijar_contexto()
+        if usuario_id:
+            fijar_contexto(usuario_id=usuario_id)
+            if not request.user.is_authenticated:
+                fijar_contexto()
+        else:
+            fijar_contexto(usuario_id=self._pendiente(request), fase=FASE_PREINGRESO)
         try:
             return self.get_response(request)
         finally:
             limpiar_contexto()
+
+    @staticmethod
+    def _pendiente(request):
+        """Usuario con login a medias (contraseña verificada, falta el segundo factor)."""
+        pendiente = request.session.get(LOGIN_SESSION_KEY)
+        if not isinstance(pendiente, dict) or not pendiente.get("user_pk"):
+            return None
+        from allauth.account.utils import url_str_to_user_pk
+
+        try:
+            # allauth guarda la pk codificada (base36 para enteros).
+            return url_str_to_user_pk(pendiente["user_pk"])
+        except (ValueError, TypeError):
+            return None

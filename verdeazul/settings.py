@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "allauth",
     "allauth.account",
+    "allauth.mfa",
     # Apps del proyecto
     "cuentas",
     "catalogo",
@@ -71,6 +72,7 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "cuentas.sesion.ControlSesionMiddleware",  # inactividad por rol, 10 h, sesiones cerradas
+    "cuentas.mfa.ExigirMFAMiddleware",  # TC/VF/GC/AC sin TOTP solo pueden activarlo; reto RG6
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
@@ -137,6 +139,21 @@ ACCOUNT_SIGNUP_FIELDS = ["username*", "password1*"]
 ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_SESSION_REMEMBER = False
 ACCOUNT_LOGOUT_REDIRECT_URL = "account_login"
+# Vigencia del enlace de activación de cuentas (C15): 24 h.
+PASSWORD_RESET_TIMEOUT = 24 * 3600
+
+# ---------------------------------------------------------------------------
+# Segundo factor: TOTP y códigos de recuperación (allauth.mfa)
+# Obligatorio para TC, VF, GC y AC (cuentas.mfa.ExigirMFAMiddleware).
+# Los secretos se guardan cifrados (cuentas.adaptador.AdaptadorMFA, RG2) con
+# MFA_CLAVE_CIFRADO; si no está definida, se deriva de SECRET_KEY.
+# ---------------------------------------------------------------------------
+MFA_ADAPTER = "cuentas.adaptador.AdaptadorMFA"
+MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
+MFA_TOTP_ISSUER = "Verdeazul"
+MFA_TRUST_ENABLED = False  # nunca "confiar en este navegador"
+MFA_CLAVE_CIFRADO = os.environ.get("MFA_CLAVE_CIFRADO", "")
+MFA_REAUTENTICACION_SEGUNDOS = 300  # RG6: segundo factor hace <= 5 min
 
 # ---------------------------------------------------------------------------
 # Sesión y cookies (Arquitectura §4.4). Inactividad por rol y máximo absoluto:
@@ -147,6 +164,7 @@ SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_AGE = 10 * 60 * 60  # máximo absoluto de 10 horas
 CSRF_COOKIE_HTTPONLY = True
+CSRF_FAILURE_VIEW = "cuentas.sesion.csrf_fallido"  # salida reenviada tras Clear-Site-Data
 
 # ---------------------------------------------------------------------------
 # HTTPS: solo fuera de DEBUG (Cloud Run termina TLS y reenvía por HTTP interno)
