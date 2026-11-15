@@ -102,3 +102,23 @@ class RutasCerradasTests(TestCase):
         for ruta in ("/cuentas/password/reset/", "/cuentas/password/reset/done/", "/cuentas/email/"):
             with self.subTest(ruta=ruta):
                 self.assertEqual(self.client.get(ruta).status_code, 404)
+
+
+class MenuTests(TestCase):
+    """El menú de las pantallas de allauth no ofrece rutas deshabilitadas."""
+
+    def test_sin_cambiar_correo_con_sesion(self):
+        u = crear_cuenta("ana", EstadoCuenta.ACTIVA)
+        services.agregar_rol(u, "PF")
+        self.client.force_login(u)
+        respuesta = self.client.get(reverse("account_change_password"))
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertNotContains(respuesta, 'href="/cuentas/email/')
+        self.assertNotContains(respuesta, "orreo electrónico")
+        self.assertContains(respuesta, f'href="{reverse("account_logout")}"')
+        self.assertContains(respuesta, f'href="{reverse("mfa_index")}"')
+
+    def test_sin_registrarse_sin_sesion(self):
+        respuesta = self.client.get(reverse("account_login"))
+        self.assertNotContains(respuesta, f'href="{reverse("account_signup")}"')
+        self.assertNotContains(respuesta, 'href="/cuentas/email/')

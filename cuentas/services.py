@@ -16,7 +16,8 @@ de GC/AE y el cierre de sesiones a los servicios de AR/RR (C7).
 C15 (AC·O7a CR, MO, BA) se implementa en crear_cuenta, modificar_cuenta,
 dar_de_baja y enlace_activacion; C7 (AC·O7b AR, RR; GC·O7b AU, RE) en
 asignar_rol, retirar_rol, autorizar_solicitud y rechazar_solicitud; C14
-(GC·O7a AU) en aprobar_ventana. Estos sí autorizan con el motor y registran el
+(GC·O7a AU) en aprobar_ventana; C18 (AC·O7c CR, RV) en registrar_dispositivo y
+revocar_dispositivo. Estos sí autorizan con el motor y registran el
 evento en la bitácora. procesar_ventanas es la tarea diaria (proceso sin
 usuario): activa las cuentas AE el día de inicio y da de baja las vencidas.
 """
@@ -39,10 +40,12 @@ from nucleo.acciones import Accion
 from nucleo.errores import DatoInvalido, SeparacionDeFunciones, TransicionInvalida
 from nucleo.transicion import bloquear, transicion
 
-from . import selectores, sesion
+from . import llaves, selectores, sesion
 from .models import (
     DIAS_MAXIMOS_VENTANA,
+    DispositivoCampo,
     EstadoCuenta,
+    EstadoDispositivo,
     EstadoSolicitudRol,
     EstadoVentana,
     MotivoCierre,
@@ -555,3 +558,76 @@ def _evento_tarea(accion, cuenta, anterior, ventana_id, **extra) -> None:
         antes={"estado": anterior}, despues={"estado": cuenta.estado, "ventana": ventana_id, **extra},
         detalle="tarea diaria de ventanas de auditoría",
     )
+
+
+# ===========================================================================
+# C18 · AC·O7c CR, RV
+# ===========================================================================
+def _evento_dispositivo(usuario, accion, d, **extra):
+    # Solo la huella: ni la llave completa ni datos personales.
+    ganchos.registrar_evento(
+        actor=usuario, accion=accion, recurso_tipo="dispositivo", recurso_id=str(d.pk),
+        despues={"responsable": d.responsable_id, "huella": d.huella, "estado": d.estado, **extra},
+    )
+
+
+@transicion(Accion.DISPOSITIVO_REGISTRAR, "dispositivo")
+def registrar_dispositivo(usuario, responsable, *, etiqueta, llave_publica) -> DispositivoCampo:
+    """
+    C18: TC ∈ R_vig(responsable(d)) ∧ cuenta(responsable(d)).estado = ACTIVA.
+    Solo se guarda la llave pública; su huella no puede repetirse nunca.
+    """
+    algoritmo, pem, huella = llaves.normalizar_llave_publica(llave_publica)
+    etiqueta = _texto(etiqueta, "etiqueta", 100)
+    if not etiqueta:
+        raise DatoInvalido("etiqueta: requerida.")
+    responsable = bloquear(Usuario, responsable)
+    ganchos.autorizar(usuario, Accion.DISPOSITIVO_REGISTRAR, None, {"responsable": responsable})
+    if responsable.estado != EstadoCuenta.ACTIVA:
+        raise TransicionInvalida(f"La cuenta del responsable está {responsable.estado}.")
+    if roles.TC not in selectores.roles_vigentes(responsable):
+        raise DatoInvalido("El responsable de un dispositivo debe tener el rol TC vigente.")
+    try:
+        with transaction.atomic():
+            d = DispositivoCampo.objects.create(
+                responsable=responsable, etiqueta=etiqueta, algoritmo=algoritmo, llave_publica=pem,
+                huella=huella, registrado_por=usuario,
+            )
+    except IntegrityError:
+        raise DatoInvalido("Esa llave ya fue registrada (las llaves no se reutilizan).")
+    _evento_dispositivo(usuario, Accion.DISPOSITIVO_REGISTRAR, d, algoritmo=algoritmo)
+    return d
+
+
+def _revocar(dispositivo: DispositivoCampo, por, motivo: str) -> DispositivoCampo:
+    dispositivo.estado = EstadoDispositivo.REVOCADO
+    dispositivo.revocado_por = por
+    dispositivo.revocado_en = timezone.now()
+    dispositivo.motivo_revocacion = motivo
+    dispositivo.save(update_fields=["estado", "revocado_por", "revocado_en", "motivo_revocacion"])
+    return dispositivo
+
+
+@transicion(Accion.DISPOSITIVO_REVOCAR, "dispositivo")
+def revocar_dispositivo(usuario, dispositivo, *, motivo="") -> DispositivoCampo:
+    """AC·O7c RV, sin condición. Definitivo: los registros firmados después ya no valen."""
+    dispositivo = bloquear(DispositivoCampo, dispositivo)
+    ganchos.autorizar(usuario, Accion.DISPOSITIVO_REVOCAR, dispositivo)
+    if dispositivo.estado != EstadoDispositivo.ACTIVO:
+        raise TransicionInvalida("El dispositivo ya está revocado.")
+    _revocar(dispositivo, usuario, _texto(motivo, "motivo", 500))
+    _evento_dispositivo(usuario, Accion.DISPOSITIVO_REVOCAR, dispositivo)
+    return dispositivo
+
+
+def revocar_dispositivos_de(cuenta, *, por=None, motivo: str) -> int:
+    """
+    Pieza de dominio para el cierre de la baja (C16): revoca todos los
+    dispositivos activos de `cuenta`. No autoriza ni registra el evento: lo hace
+    el servicio que la usa.
+    """
+    with transaction.atomic():
+        activos = list(selectores.dispositivos_activos(cuenta).select_for_update())
+        for d in activos:
+            _revocar(d, por, motivo)
+    return len(activos)

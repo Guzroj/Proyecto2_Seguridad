@@ -1,0 +1,39 @@
+{% load i18n %}
+<!DOCTYPE html>
+<html lang="es">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{% block head_title %}{% endblock head_title %} · Verdeazul</title>
+        {% block extra_head %}{% endblock extra_head %}
+    </head>
+    <body>
+        {% block body %}
+            {% if messages %}
+                <div>
+                    <strong>Mensajes:</strong>
+                    <ul>{% for message in messages %}<li>{{ message }}</li>{% endfor %}</ul>
+                </div>
+            {% endif %}
+            {% comment %}
+                Menú propio: sin "Cambiar correo" (deshabilitado, las cuentas las
+                administra AC) ni "Registrarse" (no hay registro público, C15).
+            {% endcomment %}
+            <nav>
+                <strong>Menú:</strong>
+                <ul>
+                    {% if user.is_authenticated %}
+                        <li><a href="{% url 'inicio' %}">Inicio</a></li>
+                        <li><a href="{% url 'account_change_password' %}">Cambiar la contraseña</a></li>
+                        <li><a href="{% url 'mfa_index' %}">Segundo factor</a></li>
+                        <li><a href="{% url 'account_logout' %}">Cerrar sesión</a></li>
+                    {% else %}
+                        <li><a href="{% url 'account_login' %}">Iniciar sesión</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% block content %}{% endblock content %}
+        {% endblock body %}
+        {% block extra_body %}{% endblock extra_body %}
+    </body>
+</html>

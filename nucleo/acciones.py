@@ -55,3 +55,7 @@ class Accion:
     # O7a · Ventanas de auditoría
     VENTANA_AUTORIZAR = "ventana:autorizar"      # GC·O7a AU (C14)
     CUENTA_ACTIVAR = "cuenta:activar"            # tarea diaria: la cuenta AE se activa en v.inicio (C14)
+
+    # O7c · Dispositivos de campo
+    DISPOSITIVO_REGISTRAR = "dispositivo:registrar"  # AC·O7c CR (C18)
+    DISPOSITIVO_REVOCAR = "dispositivo:revocar"      # AC·O7c RV (sin condición)

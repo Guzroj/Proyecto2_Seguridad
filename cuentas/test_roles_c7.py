@@ -81,9 +81,16 @@ class AsignarTests(C7Base):
         self.assertFalse(SolicitudRol.objects.exists())
 
     def test_ae_es_excluyente_con_tc_vf_gc_y_ac(self):
-        for rol in ("TC", "VF", "GC"):
+        for rol in ("TC", "VF", "GC", "AC"):
             with self.subTest(rol=rol), self.assertRaises(SeparacionDeFunciones):
                 services.asignar_rol(self.ac, con_rol(f"con-{rol}", rol), "AE")
+        self.assertFalse(SolicitudRol.objects.filter(rol="AE").exists())
+        # Y al revés: a quien ya es AE no se le da ninguno de esos roles.
+        auditor = con_rol("auditor", "AE")
+        for rol in ("TC", "VF", "GC", "AC"):
+            with self.subTest(al_reves=rol), self.assertRaises(SeparacionDeFunciones):
+                services.asignar_rol(self.ac, auditor, rol)
+        self.assertEqual(roles_vigentes(auditor), {"AE"})
 
     def test_solo_cuentas_activas(self):
         for estado in (EstadoCuenta.PENDIENTE, EstadoCuenta.EN_BAJA, EstadoCuenta.INACTIVA):

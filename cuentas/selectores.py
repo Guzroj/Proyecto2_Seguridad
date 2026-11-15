@@ -11,7 +11,15 @@ datos, nunca de la sesión ni de la petición (los roles no se copian en la sesi
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import DIAS_MAXIMOS_VENTANA, EstadoCuenta, EstadoVentana, RolUsuario, VentanaAuditoria
+from .models import (
+    DIAS_MAXIMOS_VENTANA,
+    DispositivoCampo,
+    EstadoCuenta,
+    EstadoDispositivo,
+    EstadoVentana,
+    RolUsuario,
+    VentanaAuditoria,
+)
 
 
 def vigentes_en(instante=None) -> Q:
@@ -34,14 +42,20 @@ def tiene_rol(usuario, rol: str, en=None) -> bool:
     return rol in roles_vigentes(usuario, en)
 
 
+def dispositivos_activos(cuenta):
+    """Dispositivos de campo ACTIVO de la cuenta (O7c)."""
+    return DispositivoCampo.objects.filter(responsable_id=getattr(cuenta, "pk", cuenta), estado=EstadoDispositivo.ACTIVO)
+
+
 def registros_sin_sincronizar(cuenta) -> bool:
     """
-    C15: la baja deja la cuenta EN_BAJA (y no INACTIVA) solo si quedan registros
-    de campo firmados por sus dispositivos que aún no llegan al servidor. Los
-    dispositivos de campo (O7c, C18) se agregan en el paso 10; hasta entonces
-    ninguna cuenta tiene registros pendientes.
+    C15: la baja deja la cuenta EN_BAJA (y no INACTIVA) si pueden quedar
+    registros de campo firmados que aún no llegan al servidor. El servidor no ve
+    lo que guarda el dispositivo sin conexión, así que la regla es conservadora:
+    hay registros pendientes mientras la cuenta tenga algún dispositivo ACTIVO.
+    La sincronización final (C16) revoca sus dispositivos y la pasa a INACTIVA.
     """
-    return False
+    return dispositivos_activos(cuenta).exists()
 
 
 def hoy():

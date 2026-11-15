@@ -245,6 +245,58 @@ class VentanaAuditoria(models.Model):
 
 
 # ---------------------------------------------------------------------------
+# O7c · Dispositivos de campo (C18)
+# ---------------------------------------------------------------------------
+class EstadoDispositivo(models.TextChoices):
+    ACTIVO = "ACTIVO", "Activo"
+    REVOCADO = "REVOCADO", "Revocado"
+
+
+class AlgoritmoLlave(models.TextChoices):
+    ED25519 = "ED25519", "Ed25519"
+    P256 = "P256", "ECDSA P-256"
+
+
+class DispositivoCampo(models.Model):
+    """
+    Dispositivo con el que un técnico firma sus registros de campo sin conexión.
+    Solo se guarda la llave PÚBLICA (la privada nunca sale del dispositivo, RG2).
+    La huella (SHA-256 de la llave) es única para siempre: una llave revocada
+    no se vuelve a registrar. Nunca se borra; revocar es definitivo.
+    """
+
+    responsable = models.ForeignKey(Usuario, on_delete=models.PROTECT, related_name="dispositivos")
+    etiqueta = models.CharField(max_length=100)
+    algoritmo = models.CharField(max_length=7, choices=AlgoritmoLlave.choices)
+    llave_publica = models.TextField(help_text="PEM SubjectPublicKeyInfo.")
+    huella = models.CharField(max_length=64, unique=True, help_text="SHA-256 (hex) de la llave en DER.")
+    estado = models.CharField(max_length=8, choices=EstadoDispositivo.choices, default=EstadoDispositivo.ACTIVO)
+    registrado_por = models.ForeignKey(Usuario, on_delete=models.PROTECT, related_name="+")
+    registrado_en = models.DateTimeField(auto_now_add=True)
+    revocado_por = models.ForeignKey(
+        Usuario, on_delete=models.PROTECT, related_name="+", null=True, blank=True,
+        help_text="Vacío si lo revocó un proceso (cierre de la baja, C16).",
+    )
+    revocado_en = models.DateTimeField(null=True, blank=True)
+    motivo_revocacion = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        verbose_name = "dispositivo de campo"
+        verbose_name_plural = "dispositivos de campo"
+        ordering = ["responsable", "-registrado_en"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(estado="ACTIVO", revocado_por__isnull=True, revocado_en__isnull=True)
+                | Q(estado="REVOCADO", revocado_en__isnull=False),
+                name="dispositivo_revocacion_coherente",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.etiqueta} · {self.responsable} ({self.estado})"
+
+
+# ---------------------------------------------------------------------------
 # O7a · Sesiones propias
 # ---------------------------------------------------------------------------
 class MotivoCierre(models.TextChoices):
