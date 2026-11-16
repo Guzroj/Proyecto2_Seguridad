@@ -1,0 +1,21 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Fincas{% endblock %}
+{% block content %}
+  <h1>Fincas</h1>
+  {% if es_ac %}<p><a href="{% url 'catalogo_finca_nueva' %}">Nueva finca</a></p>{% endif %}
+  <table>
+    <thead><tr><th>Finca</th><th>Ubicación</th><th>Estado</th><th>Parcelas</th></tr></thead>
+    <tbody>
+      {% for f in fincas %}
+        <tr>
+          <td><a href="{% url 'catalogo_finca' f.pk %}">{{ f.nombre }}</a></td>
+          <td>{{ f.ubicacion }}</td>
+          <td>{{ f.estado }}</td>
+          <td>{{ f.parcelas.count }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4">No hay fincas para mostrar.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

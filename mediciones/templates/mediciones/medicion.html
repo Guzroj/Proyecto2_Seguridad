@@ -1,0 +1,65 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Medición {{ m.pk|stringformat:"s"|slice:":8" }}{% endblock %}
+{% block content %}
+  <h1>Medición {{ m.pk|stringformat:"s"|slice:":8" }}{% if m.version_de_id %} (versión enmendada){% endif %}</h1>
+  <p><a href="{% url 'mediciones_mediciones' %}">← Mediciones</a></p>
+  {% if m.version_de_id %}
+    <p>Corrige a la <a href="{% url 'mediciones_medicion' m.version_de_id %}">medición original</a>, que no cambia.</p>
+  {% endif %}
+  <dl>
+    <dt>Estado</dt><dd><strong>{{ m.estado }}</strong></dd>
+    <dt>Finca / parcela</dt><dd>{{ m.parcela.finca.nombre }} / {{ m.parcela.codigo }} (geometría v{{ m.parcela_version.numero }})</dd>
+    <dt>Período</dt><dd>{{ periodo }}</dd>
+    <dt>Autor</dt><dd>{{ autor }}</dd>
+    <dt>Verificador asignado</dt><dd>{{ verificador }}</dd>
+    <dt>Número de árboles</dt><dd>{{ m.numero_arboles }}</dd>
+    <dt>Diámetro promedio (cm)</dt><dd>{{ m.dap_promedio_cm }}</dd>
+    <dt>Altura promedio (m)</dt><dd>{{ m.altura_promedio_m }}</dd>
+    <dt>Toneladas de CO₂ (calculadas por el servidor)</dt><dd>{{ m.toneladas_co2|default:"—" }}</dd>
+    {% if m.observaciones %}<dt>Observaciones</dt><dd>{{ m.observaciones }}</dd>{% endif %}
+    {% if m.estado == "DEVUELTA" %}
+      <dt>Motivo de la devolución</dt><dd>{{ m.motivo_devolucion }}{% if m.comentario_devolucion %}: {{ m.comentario_devolucion }}{% endif %}</dd>
+    {% endif %}
+    {% if m.aprobada_en %}<dt>Aprobada</dt><dd>{{ m.aprobada_en|date:"d/m/Y H:i" }}</dd>{% endif %}
+  </dl>
+
+  {% if acciones.editar or acciones.enmendar or acciones.verificar %}
+    <h2>Acciones</h2>
+    <ul>
+      {% if acciones.editar %}
+        <li><a href="{% url 'mediciones_medicion_modificar' m.pk %}">Modificar</a></li>
+        <li><a href="{% url 'mediciones_medicion_enviar' m.pk %}">Enviar a verificación</a></li>
+      {% endif %}
+      {% if acciones.enmendar %}<li><a href="{% url 'mediciones_enmienda_solicitar' m.pk %}">Solicitar enmienda</a></li>{% endif %}
+      {% if acciones.verificar %}
+        <li><a href="{% url 'mediciones_medicion_aprobar' m.pk %}">Aprobar</a></li>
+        <li><a href="{% url 'mediciones_medicion_devolver' m.pk %}">Devolver</a></li>
+      {% endif %}
+    </ul>
+  {% endif %}
+
+  <h2>Historial de actores</h2>
+  <p>Quién actuó sobre esta medición. Nadie que aparezca aquí puede aprobarla ni autorizar su enmienda (C2, C3).</p>
+  <table>
+    <thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th></tr></thead>
+    <tbody>
+      {% for fila in actores %}
+        <tr><td>{{ fila.a.fecha|date:"d/m/Y H:i:s" }}</td><td>{{ fila.usuario }}</td><td>{{ fila.a.get_accion_display }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if versiones %}
+    <h2>Versiones enmendadas</h2>
+    <ul>
+      {% for v in versiones %}<li><a href="{% url 'mediciones_medicion' v.pk %}">{{ v.pk|stringformat:"s"|slice:":8" }}</a> · {{ v.estado }} · {{ v.toneladas_co2 }} t CO₂</li>{% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if enmiendas %}
+    <h2>Enmiendas</h2>
+    <ul>
+      {% for e in enmiendas %}<li>#{{ e.pk }} · {{ e.estado }} · solicitada {{ e.solicitada_en|date:"d/m/Y H:i" }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}
