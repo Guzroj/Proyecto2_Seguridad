@@ -7,6 +7,7 @@ import unittest
 
 from autorizacion import reglas
 from autorizacion.reglas import CONCEDE, FUERA_DE_ALCANCE, NIEGA
+from autorizacion.test_reglas import HBAC_NEUTRO
 
 S = 7  # id del sujeto
 OTRO = 99
@@ -14,7 +15,8 @@ OTRO = 99
 
 def decidir(accion, rol, recurso=None, contexto=None, sujeto=S):
     return reglas.decidir({"sujeto": {"id": sujeto, "estado": "ACTIVA", "roles": [rol], "mfa_edad": None},
-                           "accion": accion, "recurso": recurso, "contexto": contexto or {}})
+                           "accion": accion, "recurso": recurso, "contexto": contexto or {},
+                           "hbac": HBAC_NEUTRO})
 
 
 def finca(propietario=OTRO, tecnicos=(), verificadores=(), estado="ACTIVA", tipo="finca"):
@@ -183,7 +185,8 @@ def medicion(**cambios):
 
 def decidir_mfa(accion, rol, recurso=None, contexto=None, mfa_edad=None, sujeto=S):
     return reglas.decidir({"sujeto": {"id": sujeto, "estado": "ACTIVA", "roles": [rol], "mfa_edad": mfa_edad},
-                           "accion": accion, "recurso": recurso, "contexto": contexto or {}})
+                           "accion": accion, "recurso": recurso, "contexto": contexto or {},
+                           "hbac": HBAC_NEUTRO})
 
 
 class C1Tests(Base):
@@ -352,7 +355,8 @@ class C5Tests(Base):
 
     def ae(self, accion, ventana):
         return reglas.decidir({"sujeto": {"id": S, "estado": "ACTIVA", "roles": ["AE"], "ventana": ventana},
-                               "accion": accion, "recurso": {"tipo": "x", "id": 1}, "contexto": {}})
+                               "accion": accion, "recurso": {"tipo": "x", "id": 1}, "contexto": {"registros": 10},
+                               "hbac": HBAC_NEUTRO})
 
     def test_lee_y_exporta_todas_las_columnas_dentro_de_la_ventana(self):
         for accion in ("finca:leer", "propietario:exportar", "medicion:leer", "certificado:exportar",

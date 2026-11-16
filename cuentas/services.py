@@ -23,7 +23,8 @@ rechazar_restablecimiento; C22 (GC·O9 RS) en resolver_alerta; el cierre de la
 baja de C16 (GC·O4 SI) en cerrar_baja_tecnico. Estos sí autorizan con el motor y registran el
 evento en la bitácora. procesar_ventanas es la tarea diaria (proceso sin
 usuario): activa las cuentas AE el día de inicio y da de baja las vencidas.
-crear_alerta es la vía del motor HBAC (proceso) para crear en O9.
+crear_alerta es la vía del motor HBAC (proceso) para crear en O9 y
+registrar_actividad la de sus contadores (lecturas y exportaciones concedidas).
 """
 
 from django.contrib.auth.tokens import default_token_generator
@@ -47,6 +48,7 @@ from nucleo.transicion import bloquear, transicion
 from . import llaves, selectores, sesion
 from .models import (
     DIAS_MAXIMOS_VENTANA,
+    ActividadHBAC,
     Alerta,
     ControlHBAC,
     DispositivoCampo,
@@ -62,6 +64,7 @@ from .models import (
     RestablecimientoFactor,
     RolUsuario,
     SolicitudRol,
+    TipoActividad,
     TipoSolicitudRol,
     Usuario,
     VentanaAuditoria,
@@ -812,6 +815,23 @@ def crear_alerta(sujeto, control, *, detalle=None) -> tuple[Alerta, bool]:
         detalle="motor HBAC: ocurrencia agrupada en una alerta abierta",
     )
     return existente, False
+
+
+def registrar_actividad(sujeto, tipo, objeto: str, *, registros: int = 1) -> ActividadHBAC:
+    """
+    Motor HBAC (proceso, sin autorización humana): el PEP anota cada lectura
+    concedida de O1/O4 (H1) y cada exportación concedida con sus registros (H3).
+    """
+    if tipo not in TipoActividad.values:
+        raise DatoInvalido(f"Tipo de actividad desconocido: {tipo!r}.")
+    if not isinstance(objeto, str) or not 2 <= len(objeto) <= 3:
+        raise DatoInvalido("objeto: columna de la matriz.")
+    if isinstance(registros, bool) or not isinstance(registros, int) or registros < 0:
+        raise DatoInvalido("registros: entero no negativo.")
+    if tipo == TipoActividad.LECTURA:
+        registros = 1
+    return ActividadHBAC.objects.create(sujeto_id=getattr(sujeto, "pk", sujeto), tipo=tipo, objeto=objeto,
+                                        registros=registros, en=timezone.now())
 
 
 @transicion(Accion.ALERTA_RESOLVER, "alerta")

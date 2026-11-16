@@ -92,7 +92,7 @@ class VentanaYAuditorTests(MotorRealBase):
         services.aprobar_ventana(self.g1, self.ae.ventana_auditoria)
         for accion in (Accion.MEDICION_LEER, Accion.CERTIFICADO_EXPORTAR, Accion.BITACORA_LEER):
             with self.subTest(accion=accion):
-                cliente.autorizar(self.ae, accion)
+                cliente.autorizar(self.ae, accion, None, {"registros": 10})
         with self.assertRaises(AccesoDenegado):                             # V9: otra operación
             cliente.autorizar(self.ae, Accion.MEDICION_DEVOLVER)
 

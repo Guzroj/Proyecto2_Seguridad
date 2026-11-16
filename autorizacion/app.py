@@ -12,7 +12,8 @@ token OIDC válido para su URL.
 
 Contrato:
   POST /autorizar  ->  200 {"resultado": "CONCEDE" | "NIEGA" | "FUERA_DE_ALCANCE"
-                            | "REAUTENTICAR", "regla", "motivo", "rol", "hbac"}
+                            | "REAUTENTICAR", "regla", "motivo", "rol", "hbac",
+                            "alertas", "marca_agua"}
   Una solicitud mal formada responde 422 y el PEP la trata como negación
   (fallo cerrado). Nunca se concede por omisión.
 """
@@ -51,6 +52,7 @@ class SolicitudAutorizacion(BaseModel):
     accion: str = Field(min_length=1, max_length=100)
     recurso: dict[str, Any] | None = None
     contexto: dict[str, Any] = Field(default_factory=dict)
+    hbac: dict[str, Any] = Field(default_factory=dict)  # contadores y hora para H1–H3
 
 
 @app.get("/healthz")

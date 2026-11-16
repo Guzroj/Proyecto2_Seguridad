@@ -50,9 +50,14 @@ def normalizada(celda: dict) -> dict:
     return {op: matriz.Permiso(p.condiciones, tuple(sorted(p.hbac))) for op, p in celda.items()}
 
 
+# Contadores HBAC sin nada anómalo: miércoles 10:00 en Costa Rica, sin historial.
+HBAC_NEUTRO = {"hora": "2026-11-11T10:00:00-06:00", "h1_suspendido": False, "h1_resuelta_hace": None,
+               "h1_lecturas": 0, "h1_media_propia": None, "h1_media_rol": {}, "h3_exportados": 0}
+
+
 def solicitud(accion, *roles, estado="ACTIVA", mfa_edad=None, recurso=None, sujeto_id=7):
     return {"sujeto": {"id": sujeto_id, "estado": estado, "roles": list(roles), "mfa_edad": mfa_edad},
-            "accion": accion, "recurso": recurso, "contexto": {}}
+            "accion": accion, "recurso": recurso, "contexto": {}, "hbac": dict(HBAC_NEUTRO)}
 
 
 class MatrizTests(unittest.TestCase):

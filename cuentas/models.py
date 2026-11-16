@@ -429,6 +429,38 @@ class Alerta(models.Model):
         return f"{self.control} · {self.sujeto} ({self.estado})"
 
 
+class TipoActividad(models.TextChoices):
+    LECTURA = "L", "Lectura de O1/O4"
+    EXPORTACION = "X", "Exportación"
+
+
+class ActividadHBAC(models.Model):
+    """
+    Contadores de los controles HBAC: cada lectura concedida de O1/O4 (H1: n(s)
+    y μ(s)) y cada exportación concedida con su número de registros (H3: N(s)).
+    Solo ids, la columna de la matriz y el instante; nunca qué se leyó. La
+    escribe el PEP al conceder; nadie la modifica ni la borra.
+    """
+
+    sujeto = models.ForeignKey(Usuario, on_delete=models.PROTECT, related_name="+")
+    tipo = models.CharField(max_length=1, choices=TipoActividad.choices)
+    objeto = models.CharField(max_length=3, help_text="Columna de la matriz (O1a, O4, ...).")
+    registros = models.PositiveIntegerField(default=1)
+    en = models.DateTimeField()
+
+    class Meta:
+        verbose_name = "actividad HBAC"
+        verbose_name_plural = "actividad HBAC"
+        indexes = [models.Index(fields=["sujeto", "tipo", "en"], name="actividad_sujeto_tipo_en"),
+                   models.Index(fields=["tipo", "en"], name="actividad_tipo_en")]
+        constraints = [
+            models.CheckConstraint(condition=Q(tipo="X") | Q(registros=1), name="actividad_lectura_un_registro"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.tipo} {self.objeto} · {self.sujeto_id} ({self.en:%Y-%m-%d %H:%M})"
+
+
 # ---------------------------------------------------------------------------
 # O7a · Sesiones propias
 # ---------------------------------------------------------------------------

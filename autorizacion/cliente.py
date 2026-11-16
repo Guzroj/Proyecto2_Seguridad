@@ -20,6 +20,10 @@ Autenticación hacia el motor (AUTORIZADOR_AUTENTICACION):
     con la URL del motor como audiencia.
   - "ninguna": solo en desarrollo (DEBUG); con DEBUG apagado se niega todo.
 
+Después de cada decisión, cuentas.hbac anota la actividad concedida (contadores
+de H1 y H3) y crea las alertas que pidió el motor (H1–H3). Si no puede anotar
+una concesión, se niega.
+
 usuarios_con_rol ya no pasa por el motor: lo resuelve Django leyendo la base
 (cuentas.roles.usuarios_con_rol), porque el motor no tiene acceso a ella.
 """
@@ -94,7 +98,11 @@ def consultar(solicitud: dict) -> dict:
 
 def autorizar(usuario, accion: str, recurso=None, contexto: dict | None = None) -> None:
     """Gancho nucleo.ganchos.autorizar. No devuelve nada si concede; si no, lanza."""
-    decision = consultar(pep.construir_solicitud(usuario, accion, recurso, contexto))
+    from cuentas import hbac
+
+    solicitud = pep.construir_solicitud(usuario, accion, recurso, contexto)
+    decision = consultar(solicitud)
+    hbac.aplicar_o_negar(usuario, accion, solicitud, decision)
     resultado = decision.get("resultado")
     motivo = str(decision.get("motivo") or "Acceso denegado.")[:300]
     if resultado == "CONCEDE":

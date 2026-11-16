@@ -35,6 +35,15 @@ class AppTests(unittest.TestCase):
         niega = self.pedir(sujeto={"id": 7, "estado": "ACTIVA", "roles": ["TC"]}).json()
         self.assertEqual((niega["resultado"], niega["regla"]), ("NIEGA", "RG1"))
 
+    def test_hbac_viaja_en_la_solicitud_y_las_alertas_en_la_respuesta(self):
+        from autorizacion.test_reglas import HBAC_NEUTRO
+
+        domingo = {**HBAC_NEUTRO, "hora": "2026-11-15T09:00:00-06:00"}
+        d = self.pedir(accion="finca:leer", hbac=domingo).json()
+        self.assertEqual((d["resultado"], d["marca_agua"]), ("CONCEDE", False))
+        self.assertEqual([a["control"] for a in d["alertas"]], ["H2"])
+        self.assertEqual(self.pedir(accion="finca:leer", hbac=[]).status_code, 422)
+
     def test_solicitudes_mal_formadas_dan_422(self):
         malas = [
             {"sujeto": {"id": "7", "estado": "ACTIVA", "roles": []}},          # id como texto (estricto)

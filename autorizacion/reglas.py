@@ -15,6 +15,8 @@ Regla de decisión:
   - RG5 Falla cerrada: si falta un atributo o una condición no se puede evaluar
     => NIEGA.
   - RG6 Si lo único que falla es el segundo factor reciente => REAUTENTICAR.
+  - HBAC: tras conceder, se aplican H1–H3 de la celda que concedió
+    (autorizacion.hbac); pueden negar, pedir reautenticación o pedir alertas.
 
 Las condiciones C1–C22 se registran en CONDICIONES. Mientras una condición no
 esté implementada, su celda se niega (RG5).
@@ -50,6 +52,8 @@ class Decision:
     motivo: str
     rol: str | None = None                       # rol que concedió
     hbac: tuple[str, ...] = field(default=())    # controles de la celda concedida
+    alertas: tuple[dict, ...] = field(default=())  # alertas O9 que el PEP debe crear (H1–H3)
+    marca_agua: bool = False                     # exportación concedida: lleva marca de agua
 
     @property
     def concede(self) -> bool:
@@ -57,7 +61,8 @@ class Decision:
 
     def como_dict(self) -> dict:
         return {"resultado": self.resultado, "regla": self.regla, "motivo": self.motivo,
-                "rol": self.rol, "hbac": list(self.hbac)}
+                "rol": self.rol, "hbac": list(self.hbac), "alertas": list(self.alertas),
+                "marca_agua": self.marca_agua}
 
 
 @dataclass(frozen=True)
@@ -70,6 +75,7 @@ class Solicitud:
     recurso: dict
     contexto: dict
     ventana: dict | None = None  # ventana de auditoría del sujeto (solo AE, C5)
+    hbac: dict = field(default_factory=dict)  # contadores y hora para H1–H3 (autorizacion.hbac)
 
     @property
     def mfa(self) -> bool:
@@ -149,10 +155,13 @@ def leer_solicitud(datos) -> Solicitud:
         raise AtributoFaltante("recurso")
     if not isinstance(contexto, dict):
         raise AtributoFaltante("contexto")
+    hbac_datos = datos.get("hbac", {})
+    if not isinstance(hbac_datos, dict):
+        raise AtributoFaltante("hbac")
     return Solicitud(
         sujeto_id=sujeto_id, estado=estado, roles=frozenset(r for r in roles if r in ROLES),
         mfa_edad=None if mfa_edad is None else float(mfa_edad), accion=accion,
-        recurso=recurso or {}, contexto=contexto, ventana=ventana,
+        recurso=recurso or {}, contexto=contexto, ventana=ventana, hbac=hbac_datos,
     )
 
 
@@ -211,8 +220,14 @@ def decidir(datos) -> Decision:
         if veto is not None:
             return veto
         rol, permiso = concedida
-        return Decision(CONCEDE, ",".join(permiso.condiciones) or "matriz",
-                        f"{rol}·{objeto} {operacion}", rol=rol, hbac=permiso.hbac)
+        decision = Decision(CONCEDE, ",".join(permiso.condiciones) or "matriz",
+                            f"{rol}·{objeto} {operacion}", rol=rol, hbac=permiso.hbac)
+        try:
+            return hbac.controlar(solicitud, decision, objeto, operacion)
+        except AtributoFaltante as exc:
+            return Decision(NIEGA, "RG5", f"Falta el atributo {exc} para HBAC.")
+        except Exception:
+            return Decision(NIEGA, "RG5", "Error al evaluar los controles HBAC.")
     decision = _negacion(solicitud, objeto, operacion, evaluaciones)
     # Una prohibición también prevalece sobre la razón de una negación (salvo el 404,
     # que no debe revelar nada del objeto).
@@ -248,4 +263,4 @@ def _negacion(solicitud: Solicitud, objeto: str, operacion: str, evaluaciones: l
 
 
 # Las condiciones implementadas se registran al importar su módulo.
-from . import condiciones  # noqa: E402,F401
+from . import condiciones, hbac  # noqa: E402,F401

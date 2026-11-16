@@ -10,6 +10,8 @@ petición del navegador (los roles no se copian en la sesión):
   - contexto: lo que pasa el servicio; los objetos del modelo llevan sus
     atributos igual que el recurso (p. ej. el técnico, la finca y el período al
     crear una asignación).
+  - hbac: la hora del servidor y los contadores de H1 (lecturas de O1/O4) y H3
+    (exportaciones) del sujeto; las reglas de H1–H3 las aplica el motor.
 Nunca se envían datos personales (nombres, correos, identificación): solo ids,
 estados y conjuntos de ids.
 
@@ -24,16 +26,25 @@ peticion_actual: ContextVar = ContextVar("verdeazul_peticion_actual", default=No
 
 
 class PeticionActualMiddleware:
-    """Va después de AuthenticationMiddleware."""
+    """
+    Va después de AuthenticationMiddleware y de ContextoRLSMiddleware. Al terminar
+    la petición crea las alertas HBAC que quedaron pendientes porque se pidieron
+    dentro de una transacción (cuentas.hbac): así una negación H1 deja su alerta
+    aunque la operación se revierta.
+    """
 
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
+        from cuentas import hbac
+
         marca = peticion_actual.set(request)
+        pendientes = hbac.iniciar_pendientes()
         try:
             return self.get_response(request)
         finally:
+            hbac.crear_pendientes(pendientes)
             peticion_actual.reset(marca)
 
 
@@ -298,14 +309,53 @@ def atributos_contexto(contexto: dict) -> dict:
     }
 
 
+def reloj():
+    """Reloj del servidor para HBAC (punto único: las pruebas lo fijan)."""
+    from django.utils import timezone
+
+    return timezone.now()
+
+
+def atributos_hbac(usuario_id, accion: str, roles) -> dict:
+    """
+    Hora del servidor y, según la acción, los contadores de H1 (lectura de O1/O4)
+    o H3 (exportación). Sin datos de qué se leyó: solo números.
+    """
+    from django.utils import timezone
+
+    from cuentas import selectores
+
+    from . import hbac, matriz
+
+    ahora = reloj()
+    datos = {"hora": timezone.localtime(ahora).isoformat()}
+    objeto, operacion = matriz.ACCIONES.get(accion, (None, None))
+    if operacion == "L" and objeto in hbac.LECTURAS_H1:
+        resuelta = selectores.ultima_resolucion_h1(usuario_id)
+        propia = selectores.media_propia_h1(usuario_id, ahora)
+        datos.update({
+            "h1_suspendido": selectores.suspendido_h1(usuario_id),
+            "h1_resuelta_hace": None if resuelta is None else max(0.0, (ahora - resuelta).total_seconds()),
+            "h1_lecturas": selectores.lecturas_h1(usuario_id, ahora),
+            "h1_media_propia": propia,
+            "h1_media_rol": {} if propia is not None else {
+                rol: selectores.media_rol_h1(rol, ahora) for rol in sorted(set(roles) & hbac.ROLES_H1)},
+        })
+    elif operacion == "X":
+        datos["h3_exportados"] = selectores.exportados_h3(usuario_id, ahora)
+    return datos
+
+
 def construir_solicitud(usuario, accion: str, recurso=None, contexto: dict | None = None) -> dict:
     datos_contexto = atributos_contexto(contexto)
     extra = CONTEXTO_POR_ACCION.get(accion)
     if extra is not None:
         datos_contexto.update(extra(recurso, contexto))
+    sujeto = atributos_sujeto(usuario)
     return {
-        "sujeto": atributos_sujeto(usuario),
+        "sujeto": sujeto,
         "accion": accion,
         "recurso": atributos_recurso(recurso),
         "contexto": datos_contexto,
+        "hbac": atributos_hbac(sujeto["id"], accion, sujeto["roles"]),
     }

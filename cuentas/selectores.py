@@ -9,12 +9,19 @@ datos, nunca de la sesión ni de la petición (los roles no se copian en la sesi
   metadatos_factores(u)  O7d L (metadatos): tipo y fechas de los factores, sin secretos
   suspendido_h1(s)    H1: hay una alerta H1 abierta (lecturas de O1/O4 suspendidas)
   ultima_resolucion_h1(s)  H1: cuándo se levantó la última suspensión (exige mfa después)
+  lecturas_h1(s), media_propia_h1(s), media_rol_h1(r)  H1: n(s) y μ(s)
+  exportados_h3(s)    H3: registros exportados en las últimas 24 h
 """
 
-from django.db.models import Q
+from datetime import timedelta
+
+from django.db import connection
+from django.db.models import Q, Sum
+from django.db.models.functions import TruncHour
 from django.utils import timezone
 
 from .models import (
+    ActividadHBAC,
     DIAS_MAXIMOS_VENTANA,
     Alerta,
     ControlHBAC,
@@ -24,6 +31,7 @@ from .models import (
     EstadoDispositivo,
     EstadoVentana,
     RolUsuario,
+    TipoActividad,
     VentanaAuditoria,
 )
 
@@ -126,3 +134,78 @@ def ultima_resolucion_h1(usuario):
         .values_list("resuelta_en", flat=True)
         .first()
     )
+
+
+# ---------------------------------------------------------------------------
+# Contadores HBAC (los lee el PEP; las reglas están en autorizacion.hbac)
+# ---------------------------------------------------------------------------
+VENTANA_H1 = timedelta(minutes=60)
+HISTORIAL_H1 = timedelta(days=90)
+VENTANA_H3 = timedelta(hours=24)
+
+
+def _lecturas(usuario_id):
+    return ActividadHBAC.objects.filter(sujeto_id=usuario_id, tipo=TipoActividad.LECTURA)
+
+
+def lecturas_h1(usuario, ahora=None) -> int:
+    """
+    n(s) sin la petición en curso: lecturas concedidas de O1/O4 en los últimos
+    60 min. Si en ese lapso un GC resolvió una alerta H1 del sujeto, solo cuentan
+    las posteriores a la resolución: la ventana va desde max(ahora − 60 min, resuelta_en).
+    """
+    ahora = ahora or timezone.now()
+    usuario_id = getattr(usuario, "pk", usuario)
+    desde = ahora - VENTANA_H1
+    resuelta = ultima_resolucion_h1(usuario_id)
+    if resuelta is not None and resuelta > desde:
+        desde = resuelta
+    return _lecturas(usuario_id).filter(en__gt=desde, en__lte=ahora).count()
+
+
+def _media(lecturas) -> float | None:
+    """Lecturas por hora activa (hora con al menos una lectura de esa persona)."""
+    horas = lecturas.annotate(hora=TruncHour("en")).values("sujeto_id", "hora").distinct().count()
+    return lecturas.count() / horas if horas else None
+
+
+def media_propia_h1(usuario, ahora=None) -> float | None:
+    """
+    μ(s) con historial propio: solo si su primera lectura tiene 90 días o más
+    ("con menos historial: media del rol"). Lecturas por hora activa en los 90
+    días anteriores a la ventana de n(s): la ráfaga que se mide no sube su umbral.
+    """
+    ahora = ahora or timezone.now()
+    desde, hasta = ahora - HISTORIAL_H1, ahora - VENTANA_H1
+    propias = _lecturas(getattr(usuario, "pk", usuario))
+    if not propias.filter(en__lte=desde).exists():
+        return None
+    return _media(propias.filter(en__gte=desde, en__lt=hasta)) or 0.0
+
+
+def media_rol_h1(rol: str, ahora=None) -> float | None:
+    """
+    μ del rol en 90 días (mismo periodo que la propia): lecturas por hora activa
+    de quienes tienen hoy el rol vigente. En PostgreSQL sale de una función que
+    devuelve solo el número (RLS no deja ver lecturas ajenas). None si el rol
+    no tiene historial.
+    """
+    ahora = ahora or timezone.now()
+    desde, hasta = ahora - HISTORIAL_H1, ahora - VENTANA_H1
+    if connection.vendor == "postgresql":
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT cuentas_media_lecturas_rol(%s, %s, %s)", [rol, desde, hasta])
+            return cursor.fetchone()[0]
+    con_rol = RolUsuario.objects.filter(vigentes_en(ahora), rol=rol).values("usuario_id")
+    return _media(ActividadHBAC.objects.filter(tipo=TipoActividad.LECTURA, sujeto_id__in=con_rol,
+                                               en__gte=desde, en__lt=hasta))
+
+
+def exportados_h3(usuario, ahora=None) -> int:
+    """N(s) sin la petición en curso: registros exportados en las últimas 24 h."""
+    ahora = ahora or timezone.now()
+    total = ActividadHBAC.objects.filter(
+        sujeto_id=getattr(usuario, "pk", usuario), tipo=TipoActividad.EXPORTACION,
+        en__gt=ahora - VENTANA_H3, en__lte=ahora,
+    ).aggregate(total=Sum("registros"))["total"]
+    return total or 0
