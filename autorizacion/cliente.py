@@ -100,7 +100,11 @@ def _decidir(usuario, accion: str, recurso=None, contexto: dict | None = None) -
     """Pregunta al motor, aplica los efectos HBAC y traduce la negación a su excepción."""
     from cuentas import hbac
 
-    solicitud = pep.construir_solicitud(usuario, accion, recurso, contexto)
+    try:
+        solicitud = pep.construir_solicitud(usuario, accion, recurso, contexto)
+    except Exception as exc:  # RG5: sin atributos (p. ej., RLS oculta una fila relacionada) no se decide
+        log.warning("El PEP no pudo leer los atributos de %s: %s", accion, type(exc).__name__)
+        raise AccesoDenegado("No se pudieron leer los atributos: se niega.") from exc
     decision = consultar(solicitud)
     hbac.aplicar_o_negar(usuario, accion, solicitud, decision)
     resultado = decision.get("resultado")
