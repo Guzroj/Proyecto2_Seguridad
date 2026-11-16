@@ -9,10 +9,12 @@ fido2==2.2.1
 Django==5.2.19
 gunicorn==27.0.0
 httpx==0.28.1
+numpy==2.5.5
 psycopg==3.3.8
 psycopg-binary==3.3.8
 pycparser==3.12
 python-dotenv==1.2.4
 qrcode==8.2
+shapely==2.1.2
 sqlparse==0.6.1
 tzdata==2026.6

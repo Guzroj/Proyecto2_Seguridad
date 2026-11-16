@@ -19,7 +19,7 @@ from django.test import override_settings
 from autorizacion import cliente, listas, pep, reglas
 from autorizacion.listas import LISTAS, listar
 from autorizacion.test_cliente import LOCAL, MotorFalso, con_rol
-from autorizacion.test_integracion_o1_o3 import POLIGONO, EscenarioBase
+from autorizacion.test_integracion_o1_o3 import EscenarioBase, poligono
 from autorizacion.test_integracion_o4_o6 import DATOS
 from catalogo import services as catalogo
 from catalogo.models import DatosPropietario
@@ -45,7 +45,7 @@ class ListasBase(EscenarioBase):
         self.medicion = mediciones.aprobar_medicion(self.vf, self.medicion)
         self.enmienda = mediciones.solicitar_enmienda(self.tc, self.medicion, justificacion="Conteo", **DATOS)
         self.finca2 = catalogo.crear_finca(self.ac, "El Roble", "Sarapiquí", self.pf2)
-        self.parcela2 = catalogo.crear_parcela(self.ac, self.finca2, codigo="R1", area_ha="2", geometria=POLIGONO)
+        self.parcela2 = catalogo.crear_parcela(self.ac, self.finca2, codigo="R1", area_ha="2", geometria=poligono(1))
         mediciones.crear_asignacion(self.ac, self.tc2, self.finca2, self.periodo)
         self.medicion2 = mediciones.crear_medicion(self.tc2, self.parcela2, self.periodo, **DATOS)
         for pf in (self.pf, self.pf2):

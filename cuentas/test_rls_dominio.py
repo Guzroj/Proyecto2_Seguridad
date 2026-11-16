@@ -29,7 +29,7 @@ from django.test import override_settings
 
 from autorizacion import cliente, pep, procesos
 from autorizacion.listas import listar
-from autorizacion.test_integracion_o1_o3 import POLIGONO
+from autorizacion.test_integracion_o1_o3 import poligono
 from autorizacion.test_integracion_o4_o6 import DATOS
 from autorizacion.test_integracion_o7_o9 import GANCHOS
 from autorizacion.test_listas import ListasBase
@@ -143,8 +143,8 @@ class EscrituraCatalogoTests(RLSDominioBase):
     def test_flujo_por_servicios_bajo_rls(self):
         with self.como(self.ac):
             finca = catalogo.crear_finca(self.ac, "Nueva", "Guatuso", self.pf2)
-            parcela = catalogo.crear_parcela(self.ac, self.finca, codigo="P3", area_ha="1", geometria=POLIGONO)
-            catalogo.modificar_geometria(self.ac, parcela, area_ha="1.1", geometria=POLIGONO)
+            parcela = catalogo.crear_parcela(self.ac, self.finca, codigo="P3", area_ha="1", geometria=poligono(2))
+            catalogo.modificar_geometria(self.ac, parcela, area_ha="1.1", geometria=poligono(2))
             catalogo.modificar_finca(self.ac, finca, nombre="Nueva Esperanza")
             catalogo.registrar_datos_propietario(self.ac, self.pf, nombre_completo="Otro nombre", identificacion="9-9")
             asignacion = mediciones.crear_asignacion(self.ac, self.tc2, self.finca, self.periodo)
@@ -275,7 +275,7 @@ class FlujoMedicionesTests(RLSMedicionesBase):
 
     def test_crear_enviar_y_devolver(self):
         with self.como(self.ac):
-            parcela = catalogo.crear_parcela(self.ac, self.finca, codigo="P4", area_ha="1", geometria=POLIGONO)
+            parcela = catalogo.crear_parcela(self.ac, self.finca, codigo="P4", area_ha="1", geometria=poligono(3))
         with self.como(self.tc):
             m = mediciones.crear_medicion(self.tc, parcela, self.periodo, **DATOS)
             m = mediciones.modificar_medicion(self.tc, m, numero_arboles=140)

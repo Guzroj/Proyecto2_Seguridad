@@ -9,6 +9,9 @@ responsabilidades) en Django + PostgreSQL, desplegado en Google Cloud Run con ba
 
 ## 1. Cómo correrlo en local
 
+Guía paso a paso (primera vez, cuentas de prueba, recorrido en el navegador, pruebas y cómo
+probar certificados y bitácora): [`docs/como-correr.md`](docs/como-correr.md).
+
 Requisitos: **Docker Desktop**. No hace falta instalar Python ni Postgres en la máquina
 (en Windows, App Control bloquea la DLL de `psycopg`; dentro de Docker no hay problema).
 
@@ -188,7 +191,7 @@ autorizacion/     motor de autorización
   pep.py, cliente.py, listas.py, procesos.py   PEP (Django): atributos leídos de la base, listas filtradas
   app.py, matriz.py, reglas.py, condiciones.py, hbac.py   PDP (FastAPI, contenedor aparte, sin base)
 catalogo/         O1: Finca, Parcela, ParcelaVersion (O1a), DatosPropietario (O1b)
-  services.py     única vía para cambiar el catálogo
+  services.py     única vía para cambiar el catálogo (incluye el chequeo de traslape de C20 con shapely)
   pantallas.py    /gestion/fincas, /gestion/parcelas
 mediciones/       O2–O5: Periodo, Asignacion, Medicion + MedicionActor, Enmienda, MotivoDevolucion
   services.py     única vía para cambiar estados (ninguna vista hace .save() directo)
@@ -321,7 +324,7 @@ Las pruebas de `mediciones/test_disparadores.py` los atacan con SQL directo como
 | # | Decisión | Por qué | Implicación de seguridad |
 |---|---|---|---|
 | D1 | **Cálculo de CO2**: ecuación pantropical de Chave et al. (2014), `AGB = 0.0673·(ρ·D²·H)^0.976` kg por árbol, ρ = 0.6 g/cm³; carbono = 47 % (IPCC 2006); CO2 = C·44/12. Árbol promedio × número de árboles. | La Parte 1 solo dice "el servidor recalcula el carbono con los datos crudos", sin fórmula. | El cliente nunca envía toneladas; el servidor las recalcula al crear, modificar y **otra vez al aprobar**. Simplificación: árbol promedio y stock en pie, no incremento. |
-| D2 | Geometría como **GeoJSON validado** (lista blanca) en vez de **PostGIS**. | PostGIS exige GDAL en la imagen. | Limitación actual: no se valida traslape entre parcelas (parte de C20). |
+| D2 | Geometría como **GeoJSON validado** (lista blanca) en vez de **PostGIS**; la validez del polígono y el **traslape** (C20) los comprueba el servicio de catálogo con la librería `shapely`. | PostGIS exige GDAL en la imagen y activar la extensión en Neon; `shapely` cierra C20 sin cambiar la base ni la infraestructura. | Se rechaza un polígono que se cruza consigo mismo o sin área, y uno cuyo interior se cruce con la versión vigente de otra parcela activa (compartir un borde está permitido). Un bloqueo de transacción (`pg_advisory_xact_lock`) serializa los cambios de geometría, así dos altas simultáneas no pasan ambas. Riesgo residual: el traslape no lo revalida la base (las versiones sí son inmutables por disparador); quien escriba SQL directo con el rol de la aplicación podría insertar una geometría traslapada. |
 | D3 | Sin PWA sin conexión ni paquetes de trabajo firmados. | La captura offline y los paquetes firmados no forman parte de la implementación. | C13 `TV` no verifica paquetes vigentes. C16 se ejerce con la sincronización final vacía que cierra la baja de un técnico (D8). Riesgo R6 no aplica al no haber captura offline. |
 | D4 | Verificador **nuevo** en cada envío. | Consecuencia de C2: quien devolvió queda en actores(m) y no puede aprobar. | Ojos frescos tras cada devolución; exige al menos 3 VF activos para un ciclo enviar→devolver→reenviar→enmendar. |
 | D5 | On-premise → Cloud Run + Neon; OpenBao → Secret Manager. | Migración a servicios gestionados. | Secretos fuera de la imagen y del repo; TLS terminado por Cloud Run; identidad de servicio vía WIF. |
