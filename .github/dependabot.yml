@@ -6,6 +6,13 @@
 #     - Dependabot security updates
 #     - Dependabot version updates (usa este archivo dependabot.yml)
 # Sin esa activación, este archivo no tiene efecto.
+#
+# POLÍTICA DE VERSIONES
+#   - Los PRs apuntan a `develop` (nunca directo a `main`).
+#   - Se ignoran las actualizaciones MAYORES: la arquitectura fija Django 5.2
+#     LTS y Python 3.12, así que Django 6.x y Python 3.13+ rompen
+#     compatibilidad. Las actualizaciones de seguridad siguen llegando como
+#     alertas y PRs de seguridad (esas no se ignoran).
 
 version: 2
 
@@ -13,6 +20,7 @@ updates:
   # Dependencias Python declaradas en requirements.txt (raíz del repo).
   - package-ecosystem: "pip"
     directory: "/"
+    target-branch: "develop"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -21,10 +29,18 @@ updates:
     labels:
       - "dependencias"
       - "python"
+    ignore:
+      # Django 6.x no es compatible con la arquitectura (5.2 LTS).
+      - dependency-name: "django"
+        update-types: ["version-update:semver-major"]
+      # Ninguna otra dependencia salta de versión mayor automáticamente.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # Imágenes base de Dockerfile y Dockerfile.autorizador (raíz del repo).
   - package-ecosystem: "docker"
     directory: "/"
+    target-branch: "develop"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -33,3 +49,14 @@ updates:
     labels:
       - "dependencias"
       - "docker"
+    ignore:
+      # La arquitectura fija Python 3.12-slim: 3.13, 3.14 y 3.15 rompen
+      # compatibilidad. Para Docker, 3.12 -> 3.15 cuenta como actualización
+      # MENOR (no mayor), por eso se ignoran menor y mayor: el 3.12 sigue
+      # recibiendo parches, pero la imagen base no salta de 3.12.
+      - dependency-name: "python"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

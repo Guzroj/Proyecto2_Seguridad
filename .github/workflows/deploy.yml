@@ -11,6 +11,9 @@
 #   3. deploy: publica `verdeazul-autorizador` (privado), autoriza a la service
 #      account de `verdeazul` a invocarlo (OIDC service-to-service) y publica
 #      `verdeazul` (público, con AUTORIZADOR_URL ya resuelta).
+#   4. tarea diaria: crea/actualiza el Cloud Run Job `verdeazul-tarea-diaria`
+#      (fase 'sistema' de RLS, con el rol runtime) y su disparador de Cloud
+#      Scheduler: `5 0 * * *`, zona America/Costa_Rica.
 #
 # Autenticación en GCP: Workload Identity Federation (sin llaves JSON).
 #
@@ -21,17 +24,19 @@
 #   GCP_WORKLOAD_IDENTITY_PROVIDER projects/<NUMERO>/locations/global/workloadIdentityPools/<POOL>/providers/<PROVIDER>
 #   GCP_SERVICE_ACCOUNT            <sa-deploy>@<proyecto>.iam.gserviceaccount.com
 #       (roles mínimos: roles/run.admin, roles/artifactregistry.writer,
-#        roles/iam.serviceAccountUser, roles/secretmanager.secretAccessor y
-#        roles/browser, este último sólo para leer el número de proyecto en el
-#        primer despliegue, cuando `verdeazul` aún no existe)
+#        roles/iam.serviceAccountUser, roles/secretmanager.secretAccessor,
+#        roles/cloudscheduler.admin (para la tarea diaria) y roles/browser,
+#        este último sólo para leer el número de proyecto en el primer
+#        despliegue, cuando `verdeazul` aún no existe)
 #   IMAGE_VERSION                  Versión usada en pushes a main (por defecto v1.0.0);
 #                                  en pushes de tag v* se usa el nombre del tag.
 #
 # Requisitos en GCP (creados fuera de este pipeline):
 #   - Artifact Registry: repo Docker `verdeazul` en us-east1.
 #   - Secret Manager: verdeazul-secret-key, verdeazul-db-url (rol no-dueño),
-#     verdeazul-migrate-db-url (rol dueño), verdeazul-allowed-hosts y
-#     verdeazul-csrf-origins.
+#     verdeazul-migrate-db-url (rol dueño), verdeazul-allowed-hosts,
+#     verdeazul-csrf-origins y verdeazul-mfa-clave-cifrado (clave Fernet larga
+#     y aleatoria para los secretos TOTP).
 # =============================================================================
 
 name: Build, push y deploy
@@ -62,6 +67,8 @@ env:
   SERVICE_APP: verdeazul
   SERVICE_AUTORIZADOR: verdeazul-autorizador
   JOB_MIGRATE: verdeazul-migrate
+  JOB_TAREA_DIARIA: verdeazul-tarea-diaria
+  SCHEDULER_TAREA_DIARIA: verdeazul-tarea-diaria
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -159,14 +166,16 @@ jobs:
       # El contenedor reutiliza la imagen de la app; Django exige SECRET_KEY al
       # cargar settings, por eso también se inyecta aquí (además del DATABASE_URL
       # del rol DUEÑO, que sólo se usa en este job).
+      # Tras migrar ejecuta db/grant_after_migrate.sql: las tablas/secuencias
+      # nuevas no heredan los GRANT de db/roles_rls.sql.
       - name: Crear o actualizar el Cloud Run Job de migraciones
         run: |
           gcloud run jobs deploy "${JOB_MIGRATE}" \
             --image="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/${IMAGE_APP}:${{ needs.build-and-push.outputs.sha }}" \
             --region="${REGION}" \
             --service-account="verdeazul-migrate@${PROJECT_ID}.iam.gserviceaccount.com" \
-            --command=python \
-            --args=manage.py,migrate \
+            --command=sh \
+            --args="-c,python manage.py migrate && python manage.py grant_after_migrate" \
             --set-secrets=DATABASE_URL=verdeazul-migrate-db-url:latest,SECRET_KEY=verdeazul-secret-key:latest \
             --task-timeout=15m \
             --max-retries=1 \
@@ -252,4 +261,57 @@ jobs:
             DATABASE_URL=verdeazul-db-url:latest
             ALLOWED_HOSTS=verdeazul-allowed-hosts:latest
             CSRF_TRUSTED_ORIGINS=verdeazul-csrf-origins:latest
+            MFA_CLAVE_CIFRADO=verdeazul-mfa-clave-cifrado:latest
           flags: --allow-unauthenticated --max-instances=5 --service-account=verdeazul-app@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+
+      # -----------------------------------------------------------------------
+      # Tarea diaria de cuentas (C5, C14): activa las cuentas AE el día en que
+      # empieza su ventana y da de baja las vencidas. Corre sin usuario, en la
+      # fase 'sistema' de RLS, con el rol runtime (nunca el dueño).
+      # -----------------------------------------------------------------------
+      - name: Crear o actualizar el Cloud Run Job de la tarea diaria
+        run: |
+          gcloud run jobs deploy "${JOB_TAREA_DIARIA}" \
+            --image="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/${IMAGE_APP}:${{ needs.build-and-push.outputs.sha }}" \
+            --region="${REGION}" \
+            --service-account="verdeazul-app@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --command=python \
+            --args=manage.py,tarea_diaria_cuentas \
+            --set-secrets=DATABASE_URL=verdeazul-db-url:latest,SECRET_KEY=verdeazul-secret-key:latest \
+            --task-timeout=10m \
+            --max-retries=1 \
+            --quiet
+
+      - name: Permitir que Cloud Scheduler ejecute la tarea diaria
+        run: |
+          gcloud run jobs add-iam-policy-binding "${JOB_TAREA_DIARIA}" \
+            --region="${REGION}" \
+            --member="serviceAccount:verdeazul-app@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --role="roles/run.invoker" \
+            --quiet
+
+      - name: Crear o actualizar el disparador diario (Cloud Scheduler)
+        run: |
+          set -euo pipefail
+          URI="https://${REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJECT_ID}/jobs/${JOB_TAREA_DIARIA}:run"
+          if gcloud scheduler jobs describe "${SCHEDULER_TAREA_DIARIA}" --location="${REGION}" >/dev/null 2>&1; then
+            gcloud scheduler jobs update http "${SCHEDULER_TAREA_DIARIA}" \
+              --location="${REGION}" \
+              --schedule="5 0 * * *" \
+              --time-zone="America/Costa_Rica" \
+              --uri="${URI}" \
+              --http-method=POST \
+              --oauth-service-account-email="verdeazul-app@${PROJECT_ID}.iam.gserviceaccount.com" \
+              --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform" \
+              --quiet
+          else
+            gcloud scheduler jobs create http "${SCHEDULER_TAREA_DIARIA}" \
+              --location="${REGION}" \
+              --schedule="5 0 * * *" \
+              --time-zone="America/Costa_Rica" \
+              --uri="${URI}" \
+              --http-method=POST \
+              --oauth-service-account-email="verdeazul-app@${PROJECT_ID}.iam.gserviceaccount.com" \
+              --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform" \
+              --quiet
+          fi

@@ -82,7 +82,11 @@ claves JSON de service account de larga vida). En cada push a `main`:
    `us-east1-docker.pkg.dev/<proyecto>/verdeazul/app` y `.../verdeazul/autorizador`.
 3. Despliega ambos servicios en Cloud Run por etiqueta de imagen inmutable.
 4. El job `verdeazul-migrate` ejecuta `python manage.py migrate` contra Neon usando el
-   secreto del rol dueño.
+   secreto del rol dueño y, en el mismo contenedor, `python manage.py grant_after_migrate`
+   (equivale a `psql -f db/grant_after_migrate.sql`).
+5. Crea/actualiza el Cloud Run Job `verdeazul-tarea-diaria` (`tarea_diaria_cuentas`, rol
+   runtime, fase `sistema`) y su disparador de Cloud Scheduler (`5 0 * * *`,
+   `America/Costa_Rica`).
 
 Nunca se publica solo `latest`: cada despliegue queda atado a una etiqueta de versión y a un
 commit, lo que permite volver a una imagen anterior sin ambigüedad.
@@ -96,6 +100,7 @@ commit, lo que permite volver a una imagen anterior sin ambigüedad.
 | `verdeazul-migrate-db-url` | `DATABASE_URL` con el **rol dueño** | job `verdeazul-migrate` |
 | `verdeazul-allowed-hosts` | `ALLOWED_HOSTS` (`*.run.app` del servicio) | `verdeazul` |
 | `verdeazul-csrf-origins` | `CSRF_TRUSTED_ORIGINS` (orígenes HTTPS) | `verdeazul` |
+| `verdeazul-mfa-clave-cifrado` | `MFA_CLAVE_CIFRADO`: valor aleatorio largo para cifrar los secretos TOTP | `verdeazul` |
 | `AUTORIZADOR_URL` | URL privada del servicio autorizador | `verdeazul` |
 
 Los valores se montan como variables de entorno; el runtime nunca recibe credenciales del
@@ -121,9 +126,12 @@ Antes de continuar, verificar que quede `rolsuper=f`, `rolbypassrls=f`, `rolcrea
 `rolcreaterole=f` y sin membresías.
 
 `db/roles_rls.sql` otorga los privilegios DML a `app_runtime` y activa **RLS con
-`FORCE ROW LEVEL SECURITY`**, de modo que las políticas se aplican incluso al dueño de las
-tablas y ningún camino del código puede saltarlas. `db/grant_after_migrate.sql` vuelve a otorgar los privilegios a `app_runtime`
-después de cada `migrate`, porque las tablas nuevas no heredan permisos.
+`FORCE ROW LEVEL SECURITY`** en las tablas del dominio que ya existen; las migraciones de
+`cuentas` (`0005`–`0024`) completan el RLS del resto, de modo que las políticas se aplican
+incluso al dueño de las tablas y ningún camino del código puede saltarlas.
+`db/grant_after_migrate.sql` vuelve a otorgar los privilegios a `app_runtime` después de cada
+`migrate`, porque las tablas nuevas no heredan permisos; el pipeline lo ejecuta automáticamente
+al final del job de migraciones.
 
 > **Neon Auth:** no habilitarlo si no se usa. Crea los roles `authenticated`, `anonymous` y
 > `authenticator`, y les concede DML por defecto sobre `public` (incluidas tablas de Django sin
@@ -133,10 +141,10 @@ después de cada `migrate`, porque las tablas nuevas no heredan permisos.
 
 | Service account | Usada por | Roles |
 |---|---|---|
-| `verdeazul-app` | servicio `verdeazul` | `secretAccessor` en los 4 secretos de runtime; `run.invoker` sobre el autorizador. |
+| `verdeazul-app` | servicio `verdeazul` y Cloud Run Job de la tarea diaria | `secretAccessor` en los 5 secretos de runtime; `run.invoker` sobre el autorizador y sobre el job de la tarea diaria (lo invoca Cloud Scheduler con OIDC). |
 | `verdeazul-autorizador` | servicio `verdeazul-autorizador` | Sin roles de proyecto ni acceso a secretos. |
 | `verdeazul-migrate` | Cloud Run Job `verdeazul-migrate` | `secretAccessor` solo en `verdeazul-migrate-db-url` y `verdeazul-secret-key`. |
-| `verdeazul-deploy` | GitHub Actions (WIF) | `run.admin`, `artifactregistry.writer`, `browser`, `secretAccessor` en los 5 secretos y `iam.serviceAccountUser` sobre las 3 SA de runtime. |
+| `verdeazul-deploy` | GitHub Actions (WIF) | `run.admin`, `artifactregistry.writer`, `cloudscheduler.admin`, `browser`, `secretAccessor` en los 6 secretos y `iam.serviceAccountUser` sobre las 3 SA de runtime. |
 
 El autorizador se despliega con `--no-allow-unauthenticated` y **sin IAP**: Cloud Run IAM valida
 el token OIDC que `verdeazul` pide al metadata server con `audience = AUTORIZADOR_URL`.
@@ -145,6 +153,14 @@ el token OIDC que `verdeazul` pide al metadata server con `audience = AUTORIZADO
 
 `.github/dependabot.yml` mantiene actualizadas las dependencias (pip y Docker) con
 PRs automáticos, reduciendo la ventana de exposición a vulnerabilidades conocidas.
+
+- Todos los PRs apuntan a `develop` (`target-branch`), nunca directo a `main`.
+- Se ignoran las **actualizaciones mayores**: la arquitectura fija Django 5.2 LTS y
+  Python 3.12, así que Django 6.x y Python 3.13+ rompen compatibilidad (por eso los PRs
+  de Django 6.1 y Python 3.15 se cierran sin mergear). Las **alertas/PRs de seguridad**
+  no se ignoran.
+- Las alertas se revisan en *Security → Dependabot alerts* y se atienden actualizando la
+  dependencia afectada (o documentando el riesgo aceptado).
 
 #### Despliegue de validación actual
 
@@ -169,10 +185,16 @@ un rol los resuelve Django leyendo la base, no el autorizador.
 3. **Cloud Run**: crear los dos servicios con las SA dedicadas (`verdeazul-app` y
    `verdeazul-autorizador`); el job de migraciones usa `verdeazul-migrate`. Dar al autorizador
    solo el permiso de invocación a `verdeazul-app`.
-4. **Secret Manager**: cargar los cinco secretos de la tabla anterior.
+4. **Secret Manager**: cargar los seis secretos de la tabla anterior (incluido
+   `verdeazul-mfa-clave-cifrado`, un valor aleatorio largo; no derivarlo de `SECRET_KEY`
+   para que rotar la clave de Django no invalide el segundo factor).
 5. **Base de datos**: crear `app_runtime` por SQL (ver *Dos roles*), ejecutar `db/roles_rls.sql`
    con el rol dueño y `db/grant_after_migrate.sql` después de `migrate`.
-6. **GitHub**: registrar el pool/proveedor de WIF (`github` / `github-oidc`, condición
+6. **Tarea diaria**: habilitar `cloudscheduler.googleapis.com`, dar `roles/cloudscheduler.admin`
+   a `verdeazul-deploy` y `roles/iam.serviceAccountUser` sobre `verdeazul-app` al agente
+   `service-<número-de-proyecto>@gcp-sa-cloudscheduler.iam.gserviceaccount.com` (es quien emite
+   el token OIDC del disparador).
+7. **GitHub**: registrar el pool/proveedor de WIF (`github` / `github-oidc`, condición
    `assertion.repository == 'Guzroj/Proyecto2_Seguridad'`). Las variables del workflow
    (proyecto, región, provider y service account) son opcionales: trae fallback para este
    proyecto. Sin claves JSON de larga vida.
@@ -428,11 +450,13 @@ Esto actualiza lo que dice 3.2 sobre el comportamiento actual de los ganchos:
 | `AUTORIZADOR_AUTENTICACION` | `oidc` (por defecto). `ninguna` solo se acepta con `DEBUG`. |
 | `MFA_CLAVE_CIFRADO` | Secreto en Secret Manager para cifrar los secretos TOTP; si falta, se deriva de `SECRET_KEY`. |
 
-- La tarea diaria `tarea_diaria_cuentas` debe correr como Cloud Run Job disparado por Cloud Scheduler
-  (`5 0 * * *`, zona `America/Costa_Rica`).
+- La tarea diaria `tarea_diaria_cuentas` corre como Cloud Run Job (`verdeazul-tarea-diaria`,
+  rol runtime, fase `sistema`) disparado por Cloud Scheduler (`5 0 * * *`, zona
+  `America/Costa_Rica`). `deploy.yml` crea/actualiza ambos.
 - Las migraciones dan `GRANT EXECUTE` a `app_runtime` sobre `cuentas_id_para_login`,
-  `cuentas_media_lecturas_rol` y `certificado_datos_propietario` si el rol ya existe; si se creó
-  después, repetir esos tres `GRANT` como dueño.
+  `cuentas_media_lecturas_rol` y `certificado_datos_propietario` si el rol ya existe. Si el rol
+  se creó después de migrar, `db/grant_after_migrate.sql` (que ya corre el pipeline) los otorga
+  de forma idempotente como dueño.
 
 ### 5.5 Row Level Security
 
@@ -454,9 +478,11 @@ autorización de los últimos 5 minutos). La constancia queda en `Restablecimien
 y quién lo autorizó, el método y la fecha de verificación de identidad, y el tipo y las fechas de cada
 factor invalidado (nunca sus secretos). La lectura por finca relacionada (y no celda por celda) es a propósito: el PEP y los
 servicios leen filas que la pantalla no muestra (técnicos de la finca para excluir verificadores, V5,
-C19); el alcance exacto lo aplica el PEP. El comentario de verificación de `db/roles_rls.sql` (solo 11
-tablas con RLS) quedó desactualizado: `cuentas/test_rls_django.py::MetadatosTests.test_estado_de_rls_por_tabla`
-describe el estado real.
+C19); el alcance exacto lo aplica el PEP. El comentario de verificación de `db/roles_rls.sql`
+describe el estado final: **25 tablas con RLS y FORCE**, **5 metadatos de Django con RLS sin FORCE**
+(`auth_group`, `auth_group_permissions`, `auth_permission`, `django_content_type`,
+`django_migrations`) y **`django_session` sin RLS**. La prueba que lo fija es
+`cuentas/test_rls_django.py::MetadatosTests.test_estado_de_rls_por_tabla`.
 
 ### 5.6 Decisiones de implementación (cuentas y autorización)
 

@@ -2,7 +2,9 @@
 -- db/grant_after_migrate.sql
 -- ---------------------------------------------------------------------------
 -- Otorga privilegios DML al rol de aplicación (`app_runtime`) sobre TODAS las
--- tablas y secuencias del esquema `public`.
+-- tablas y secuencias del esquema `public`, y EXECUTE sobre las funciones
+-- SECURITY DEFINER que la app necesita (login, media de lecturas y datos del
+-- certificado).
 --
 -- ¿CUÁNDO SE EJECUTA?
 --   Como rol DUEÑO, DESPUÉS de CADA `python manage.py migrate`.
@@ -87,6 +89,32 @@ BEGIN
         v_esquema, v_rol
     );
 
-    RAISE NOTICE 'Privilegios DML de % sobre el esquema % actualizados.', v_rol, v_esquema;
+    -- -----------------------------------------------------------------------
+    -- 4) Funciones SECURITY DEFINER que la app necesita ejecutar
+    -- -----------------------------------------------------------------------
+    -- Las migraciones crean estas funciones con REVOKE ALL ... FROM PUBLIC y
+    -- sólo dan EXECUTE a `app_runtime` SI EL ROL YA EXISTE. Si el rol se creó
+    -- después de migrar, hay que otorgarlo aquí (idempotente). Se comprueba
+    -- que la función exista para poder correr el script antes de esa migración.
+    IF to_regprocedure(v_esquema || '.cuentas_id_para_login(text)') IS NOT NULL THEN
+        EXECUTE format(
+            'GRANT EXECUTE ON FUNCTION %I.cuentas_id_para_login(text) TO %I',
+            v_esquema, v_rol
+        );
+    END IF;
+    IF to_regprocedure(v_esquema || '.cuentas_media_lecturas_rol(text, timestamptz, timestamptz)') IS NOT NULL THEN
+        EXECUTE format(
+            'GRANT EXECUTE ON FUNCTION %I.cuentas_media_lecturas_rol(text, timestamptz, timestamptz) TO %I',
+            v_esquema, v_rol
+        );
+    END IF;
+    IF to_regprocedure(v_esquema || '.certificado_datos_propietario(uuid)') IS NOT NULL THEN
+        EXECUTE format(
+            'GRANT EXECUTE ON FUNCTION %I.certificado_datos_propietario(uuid) TO %I',
+            v_esquema, v_rol
+        );
+    END IF;
+
+    RAISE NOTICE 'Privilegios DML y de funciones de % sobre el esquema % actualizados.', v_rol, v_esquema;
 END
 $$;

@@ -101,10 +101,11 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 -- ---------------------------------------------------------------------------
 -- 4) Row Level Security SOLO en las tablas de la aplicación
 -- ---------------------------------------------------------------------------
--- Se habilitan únicamente las tablas propias del dominio. Las tablas de
--- Django/contrib se dejan fuera a propósito: Django las gestiona (sesiones,
--- migraciones, permisos) y forzar RLS ahí rompería el arranque, el admin y el
--- login.
+-- Aquí se habilitan las 11 tablas del dominio que ya existían. Las tablas de
+-- Django/contrib NO se tocan en este archivo: las migraciones de `cuentas`
+-- (0005–0024) añaden después el RLS de las tablas nuevas, de los correos de
+-- allauth y de los metadatos de Django. Este script es sólo la base inicial;
+-- el estado final se verifica en la sección 5.
 --
 -- ENABLE ROW LEVEL SECURITY: activa las políticas para los roles normales.
 -- FORCE  ROW LEVEL SECURITY: hace que las políticas apliquen TAMBIÉN al dueño
@@ -157,8 +158,21 @@ ALTER TABLE mediciones_enmienda FORCE ROW LEVEL SECURITY;
 -- ---------------------------------------------------------------------------
 -- 5) Verificación rápida (opcional, solo lectura)
 -- ---------------------------------------------------------------------------
--- Debe mostrar relrowsecurity = true y relforcerowsecurity = true para las 11
--- tablas de la aplicación, y false para las de Django/contrib.
+-- Este script sólo enciende las 11 tablas del dominio que existían cuando se
+-- escribió. Las demás las encienden las migraciones de `cuentas` (0005–0024);
+-- el estado final, ya con todas las migraciones aplicadas, es:
+--
+--   * 25 tablas con RLS y FORCE ROW LEVEL SECURITY (el dueño también queda
+--     sujeto a las políticas).
+--   * 5 tablas de metadatos de Django con RLS SIN FORCE (`auth_group`,
+--     `auth_group_permissions`, `auth_permission`, `django_content_type`,
+--     `django_migrations`): `migrate` las escribe como dueño y la app sólo
+--     las lee.
+--   * `django_session` SIN RLS a propósito: se carga por su clave antes de
+--     saber quién es el sujeto; el control está en `cuentas_sesion`.
+--
+-- La prueba que fija este estado es
+-- `cuentas/test_rls_django.py::MetadatosTests.test_estado_de_rls_por_tabla`.
 --
 -- SELECT c.relname,
 --        c.relrowsecurity       AS rls_activo,
