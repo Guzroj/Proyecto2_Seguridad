@@ -24,3 +24,11 @@ class CuentaModificarForm(forms.Form):
     first_name = forms.CharField(label="Nombre", max_length=150, required=False)
     last_name = forms.CharField(label="Apellidos", max_length=150, required=False)
     email = forms.EmailField(label="Correo", max_length=254, required=False)
+
+
+class AsignarRolForm(forms.Form):
+    rol = forms.ChoiceField(label="Rol", choices=list(roles.ROLES.items()))
+
+
+class MotivoForm(forms.Form):
+    motivo = forms.CharField(label="Motivo", max_length=500, required=False, widget=forms.Textarea(attrs={"rows": 3}))

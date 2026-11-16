@@ -27,6 +27,8 @@
                         <li><a href="{% url 'mi_cuenta' %}">Mi cuenta</a></li>
                         {% if "AC" in menu_roles or "GC" in menu_roles or "AE" in menu_roles %}
                             <li><a href="{% url 'gestion_cuentas' %}">Cuentas</a></li>
+                            <li><a href="{% url 'gestion_solicitudes_rol' %}">Solicitudes de rol</a></li>
+                            <li><a href="{% url 'gestion_ventanas' %}">Ventanas de auditoría</a></li>
                         {% endif %}
                         <li><a href="{% url 'account_change_password' %}">Cambiar la contraseña</a></li>
                         <li><a href="{% url 'mfa_index' %}">Segundo factor</a></li>

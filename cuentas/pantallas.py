@@ -10,6 +10,11 @@ que autoriza y registra el evento. Los errores se traducen en cuentas.errores.
   cuenta_baja        C15 BA (AC), con confirmación
   cuenta_enlace      enlace de activación de un solo uso, que AC entrega por otro canal
   mi_cuenta          la propia cuenta y sus sesiones (C21)
+
+Roles y ventanas (O7b, O7a AU):
+  rol_asignar, rol_retirar      C7 AR, RR (AC); GC y AE quedan como solicitud
+  solicitudes_rol               lista; GC autoriza o rechaza (C7 AU, RE)
+  ventanas                      lista; GC aprueba (C14)
 """
 
 from django.contrib import messages
@@ -20,11 +25,11 @@ from django.views.decorators.http import require_http_methods, require_POST
 from autorizacion.listas import listar
 from nucleo import ganchos
 from nucleo.acciones import Accion
-from nucleo.errores import AccesoDenegado, FueraDeAlcance, ReglaNegocio
+from nucleo.errores import AccesoDenegado, DatoInvalido, FueraDeAlcance, ReglaNegocio
 
 from . import services
-from .formularios import CuentaModificarForm, CuentaNuevaForm
-from .models import Usuario, VentanaAuditoria
+from .formularios import AsignarRolForm, CuentaModificarForm, CuentaNuevaForm, MotivoForm
+from .models import EstadoSolicitudRol, EstadoVentana, SolicitudRol, Usuario, VentanaAuditoria
 from .selectores import roles_vigentes
 
 
@@ -47,6 +52,23 @@ def _cuenta(usuario, pk, accion=Accion.CUENTA_LEER) -> Usuario:
     return cuenta
 
 
+def _objeto(usuario, modelo, pk, accion: str, tipo: str):
+    """Lee el objeto y autoriza su lectura; inexistente y fuera de alcance dan el mismo 404."""
+    objeto = modelo.objects.filter(pk=pk).first()
+    if objeto is None:
+        raise FueraDeAlcance("No encontrado.")
+    autorizar_lectura(usuario, accion, objeto, tipo)
+    return objeto
+
+
+def _o_nada(usuario, nombre: str):
+    """Una lista opcional en una ficha: vacía si el sujeto no puede listarla."""
+    try:
+        return listar(usuario, nombre)
+    except AccesoDenegado:
+        return None
+
+
 def _sin_cache(respuesta):
     respuesta["Cache-Control"] = "no-store"
     return respuesta
@@ -62,12 +84,19 @@ def cuentas(request):
 @login_required
 def cuenta(request, pk):
     cuenta = _cuenta(request.user, pk)
+    historial = _o_nada(request.user, "roles")
+    solicitudes = _o_nada(request.user, "solicitudes_rol")
+    gestiona = "AC" in roles_vigentes(request.user) and cuenta.pk != request.user.pk
+    vigentes = roles_vigentes(cuenta)
     contexto = {
         "cuenta": cuenta,
-        "roles": sorted(roles_vigentes(cuenta)),
+        "roles": sorted(vigentes),
         "ventana": VentanaAuditoria.objects.filter(auditor=cuenta).first(),
-        "gestiona": "AC" in roles_vigentes(request.user) and cuenta.pk != request.user.pk,
+        "gestiona": gestiona,
         "sin_clave": not cuenta.has_usable_password(),
+        "historial": historial.filter(usuario=cuenta).order_by("-vigente_desde") if historial is not None else None,
+        "solicitudes": solicitudes.filter(usuario=cuenta).order_by("-solicitada_en") if solicitudes is not None else None,
+        "form_rol": AsignarRolForm() if gestiona and cuenta.estado == "ACTIVA" else None,
     }
     return render(request, "cuentas/gestion/cuenta.html", contexto)
 
@@ -140,3 +169,105 @@ def mi_cuenta(request):
     sesiones = listar(request.user, "sesiones").filter(usuario=request.user).order_by("-iniciada_en")[:20]
     return render(request, "cuentas/gestion/mi_cuenta.html",
                   {"roles": sorted(roles_vigentes(request.user)), "sesiones": sesiones})
+
+
+# ---------------------------------------------------------------------------
+# Roles (O7b) y ventanas de auditoría (O7a AU)
+# ---------------------------------------------------------------------------
+@login_required
+@require_POST
+def rol_asignar(request, pk):
+    cuenta = _cuenta(request.user, pk)
+    form = AsignarRolForm(request.POST)
+    if not form.is_valid():
+        raise DatoInvalido("Rol desconocido.")
+    rol = form.cleaned_data["rol"]
+    resultado = services.asignar_rol(request.user, cuenta, rol)
+    if isinstance(resultado, SolicitudRol):
+        messages.success(request, f"Solicitud de {rol} registrada: la autoriza otro GC.")
+    else:
+        messages.success(request, f"Rol {rol} asignado; se cerraron las sesiones de la cuenta.")
+    return redirect("gestion_cuenta", pk=cuenta.pk)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def rol_retirar(request, pk, rol):
+    cuenta = _cuenta(request.user, pk)
+    if request.method == "POST":
+        resultado = services.retirar_rol(request.user, cuenta, rol)
+        if isinstance(resultado, SolicitudRol):
+            messages.success(request, f"Solicitud de retiro de {rol} registrada: la autoriza otro GC.")
+        else:
+            messages.success(request, f"Rol {rol} retirado; se cerraron las sesiones de la cuenta.")
+        return redirect("gestion_cuenta", pk=cuenta.pk)
+    return render(request, "cuentas/gestion/confirmar.html", {
+        "titulo": f"Retirar {rol} a {cuenta.username}", "boton": "Retirar",
+        "aviso": "GC y AE necesitan la autorización de otro GC; los demás roles se retiran ya y se "
+                 "cierran las sesiones de la cuenta.",
+    })
+
+
+@login_required
+def solicitudes_rol(request):
+    lista = listar(request.user, "solicitudes_rol").select_related("usuario", "solicitada_por", "resuelta_por")
+    return render(request, "cuentas/gestion/solicitudes_rol.html", {
+        "en_curso": lista.filter(estado=EstadoSolicitudRol.SOLICITADA).order_by("solicitada_en"),
+        "resueltas": lista.exclude(estado=EstadoSolicitudRol.SOLICITADA).order_by("-resuelta_en")[:50],
+        "resuelve": "GC" in roles_vigentes(request.user),
+    })
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def solicitud_autorizar(request, pk):
+    solicitud = _objeto(request.user, SolicitudRol, pk, Accion.ROL_LEER, "solicitud_rol")
+    if request.method == "POST":
+        services.autorizar_solicitud(request.user, solicitud)
+        messages.success(request, "Solicitud autorizada; se cerraron las sesiones de la cuenta.")
+        return redirect("gestion_solicitudes_rol")
+    return render(request, "cuentas/gestion/confirmar.html", {
+        "titulo": f"Autorizar: {solicitud.get_tipo_display()} {solicitud.rol} a {solicitud.usuario.username}",
+        "boton": "Autorizar",
+        "aviso": f"La pidió {solicitud.solicitada_por.username}. Al autorizar, el cambio tiene efecto ya.",
+    })
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def solicitud_rechazar(request, pk):
+    solicitud = _objeto(request.user, SolicitudRol, pk, Accion.ROL_LEER, "solicitud_rol")
+    form = MotivoForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        services.rechazar_solicitud(request.user, solicitud, motivo=form.cleaned_data["motivo"])
+        messages.success(request, "Solicitud rechazada.")
+        return redirect("gestion_solicitudes_rol")
+    return render(request, "cuentas/gestion/confirmar.html", {
+        "titulo": f"Rechazar: {solicitud.get_tipo_display()} {solicitud.rol} a {solicitud.usuario.username}",
+        "boton": "Rechazar", "form": form,
+    }, status=400 if request.method == "POST" else 200)
+
+
+@login_required
+def ventanas(request):
+    lista = listar(request.user, "ventanas").select_related("auditor", "solicitada_por", "aprobada_por")
+    return render(request, "cuentas/gestion/ventanas.html", {
+        "pendientes": lista.filter(estado=EstadoVentana.PENDIENTE).order_by("inicio"),
+        "aprobadas": lista.filter(estado=EstadoVentana.APROBADA).order_by("-inicio")[:50],
+        "aprueba": "GC" in roles_vigentes(request.user),
+    })
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def ventana_aprobar(request, pk):
+    ventana = _objeto(request.user, VentanaAuditoria, pk, Accion.CUENTA_LEER, "ventana")
+    if request.method == "POST":
+        ventana = services.aprobar_ventana(request.user, ventana)
+        messages.success(request, f"Ventana de {ventana.auditor.username} aprobada.")
+        return redirect("gestion_ventanas")
+    return render(request, "cuentas/gestion/confirmar.html", {
+        "titulo": f"Aprobar la ventana de {ventana.auditor.username}", "boton": "Aprobar",
+        "aviso": f"Del {ventana.inicio} al {ventana.fin}, pedida por {ventana.solicitada_por.username}. "
+                 "La cuenta se activa el día de inicio y se da de baja al terminar.",
+    })

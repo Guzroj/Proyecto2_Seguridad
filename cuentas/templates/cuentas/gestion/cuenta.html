@@ -26,5 +26,39 @@
       {% endif %}
     </ul>
   {% endif %}
+  <h2>Roles</h2>
+  {% if gestiona %}
+    <ul>
+      {% for rol in roles %}
+        <li>{{ rol }} · <a href="{% url 'gestion_rol_retirar' cuenta.pk rol %}">Retirar</a></li>
+      {% endfor %}
+    </ul>
+    {% if form_rol %}
+      <form method="post" action="{% url 'gestion_rol_asignar' cuenta.pk %}">{% csrf_token %}
+        {{ form_rol.as_p }}
+        <button type="submit">Asignar rol</button>
+      </form>
+      <p>GC y AE quedan como solicitud hasta que otro GC la autorice.</p>
+    {% endif %}
+  {% endif %}
+  {% if historial is not None %}
+    <h3>Historial de roles</h3>
+    <table>
+      <thead><tr><th>Rol</th><th>Desde</th><th>Hasta</th></tr></thead>
+      <tbody>
+        {% for r in historial %}
+          <tr><td>{{ r.rol }}</td><td>{{ r.vigente_desde }}</td><td>{{ r.vigente_hasta|default:"sin fin" }}</td></tr>
+        {% empty %}<tr><td colspan="3">Sin roles.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+  {% if solicitudes %}
+    <h3>Solicitudes de rol</h3>
+    <ul>
+      {% for s in solicitudes %}
+        <li>{{ s.get_tipo_display }} {{ s.rol }} · {{ s.estado }} · pedida por {{ s.solicitada_por.username }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
   <p><a href="{% url 'gestion_cuentas' %}">Volver a cuentas</a></p>
 {% endblock %}

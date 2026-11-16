@@ -1,0 +1,28 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Ventanas de auditoría{% endblock %}
+{% block content %}
+  <h1>Ventanas de auditoría</h1>
+  <h2>Pendientes de aprobación</h2>
+  <table>
+    <thead><tr><th>Auditor</th><th>Inicio</th><th>Fin</th><th>Pedida por</th><th></th></tr></thead>
+    <tbody>
+      {% for v in pendientes %}
+        <tr>
+          <td><a href="{% url 'gestion_cuenta' v.auditor.pk %}">{{ v.auditor.username }}</a></td>
+          <td>{{ v.inicio }}</td><td>{{ v.fin }}</td><td>{{ v.solicitada_por.username }}</td>
+          <td>{% if aprueba and v.solicitada_por_id != user.pk and v.auditor_id != user.pk %}
+                <a href="{% url 'gestion_ventana_aprobar' v.pk %}">Aprobar</a>{% endif %}</td>
+        </tr>
+      {% empty %}<tr><td colspan="5">No hay ventanas pendientes.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  <h2>Aprobadas</h2>
+  <table>
+    <thead><tr><th>Auditor</th><th>Inicio</th><th>Fin</th><th>Aprobada por</th></tr></thead>
+    <tbody>
+      {% for v in aprobadas %}
+        <tr><td>{{ v.auditor.username }}</td><td>{{ v.inicio }}</td><td>{{ v.fin }}</td><td>{{ v.aprobada_por.username }}</td></tr>
+      {% empty %}<tr><td colspan="4">Ninguna.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+{% endblock %}
