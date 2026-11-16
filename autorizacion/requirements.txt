@@ -1,0 +1,8 @@
+# Dependencias mínimas del motor de autorización.
+# NO se incluye google-auth: en Cloud Run el servicio se despliega con
+# --no-allow-unauthenticated y la plataforma valida el token OIDC del llamador
+# antes de entregar la petición. Esa es la frontera de confianza real; una
+# verificación explícita del token sería solo defensa en profundidad.
+fastapi==0.162.4
+uvicorn[standard]==0.54.0
+httpx==0.28.1

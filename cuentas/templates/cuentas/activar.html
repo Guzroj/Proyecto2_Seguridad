@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><title>Activar cuenta · Verdeazul</title></head>
+<body>
+  <h1>Activar cuenta</h1>
+  {% if validlink %}
+    <p>Elige tu contraseña (mínimo 12 caracteres).</p>
+    <form method="post">{% csrf_token %}
+      {{ form.as_p }}
+      <button type="submit">Guardar contraseña</button>
+    </form>
+  {% else %}
+    <p>El enlace no es válido o ya venció. Pide uno nuevo a quien administra las cuentas.</p>
+  {% endif %}
+</body>
+</html>

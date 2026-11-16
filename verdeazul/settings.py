@@ -50,6 +50,9 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "allauth",
+    "allauth.account",
+    "allauth.mfa",
     # Apps del proyecto
     "cuentas",
     "catalogo",
@@ -65,7 +68,13 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "cuentas.rls.ContextoRLSMiddleware",  # sujeto de RLS desde la sesión del servidor
+    "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "cuentas.sesion.ControlSesionMiddleware",  # inactividad por rol, 10 h, sesiones cerradas
+    "cuentas.errores.ErroresMiddleware",  # 403 / 404 / 400 / 409 de las pantallas (antes del reto RG6)
+    "cuentas.mfa.ExigirMFAMiddleware",  # TC/VF/GC/AC sin TOTP solo pueden activarlo; reto RG6
+    "autorizacion.pep.PeticionActualMiddleware",  # el PEP lee la edad del segundo factor de la petición
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
@@ -81,6 +90,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "cuentas.contexto.menu",
             ],
         },
     },
@@ -121,13 +131,43 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Sesión y cookies (Arquitectura §4.4). Persona 3 completa inactividad por rol.
+# Autenticación: django-allauth, solo con nombre de usuario y sin registro público
+# ---------------------------------------------------------------------------
+AUTHENTICATION_BACKENDS = ["cuentas.backends.BackendRLS"]
+LOGIN_URL = "account_login"
+LOGIN_REDIRECT_URL = "inicio"
+ACCOUNT_ADAPTER = "cuentas.adaptador.AdaptadorCuentas"
+ACCOUNT_LOGIN_METHODS = {"username"}
+ACCOUNT_SIGNUP_FIELDS = ["username*", "password1*"]
+ACCOUNT_EMAIL_VERIFICATION = "none"
+ACCOUNT_SESSION_REMEMBER = False
+ACCOUNT_LOGOUT_REDIRECT_URL = "account_login"
+# Vigencia del enlace de activación de cuentas (C15): 24 h.
+PASSWORD_RESET_TIMEOUT = 24 * 3600
+
+# ---------------------------------------------------------------------------
+# Segundo factor: TOTP y códigos de recuperación (allauth.mfa)
+# Obligatorio para TC, VF, GC y AC (cuentas.mfa.ExigirMFAMiddleware).
+# Los secretos se guardan cifrados (cuentas.adaptador.AdaptadorMFA, RG2) con
+# MFA_CLAVE_CIFRADO; si no está definida, se deriva de SECRET_KEY.
+# ---------------------------------------------------------------------------
+MFA_ADAPTER = "cuentas.adaptador.AdaptadorMFA"
+MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
+MFA_TOTP_ISSUER = "Verdeazul"
+MFA_TRUST_ENABLED = False  # nunca "confiar en este navegador"
+MFA_CLAVE_CIFRADO = os.environ.get("MFA_CLAVE_CIFRADO", "")
+MFA_REAUTENTICACION_SEGUNDOS = 300  # RG6: segundo factor hace <= 5 min
+
+# ---------------------------------------------------------------------------
+# Sesión y cookies (Arquitectura §4.4). Inactividad por rol y máximo absoluto:
+# cuentas.sesion.ControlSesionMiddleware.
 # ---------------------------------------------------------------------------
 SESSION_ENGINE = "django.contrib.sessions.backends.db"  # del lado del servidor, revocable
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_AGE = 10 * 60 * 60  # máximo absoluto de 10 horas
 CSRF_COOKIE_HTTPONLY = True
+CSRF_FAILURE_VIEW = "cuentas.sesion.csrf_fallido"  # salida reenviada tras Clear-Site-Data
 
 # ---------------------------------------------------------------------------
 # HTTPS: solo fuera de DEBUG (Cloud Run termina TLS y reenvía por HTTP interno)
@@ -157,14 +197,16 @@ USE_TZ = True
 # Persona 3 y Persona 4 agregan aquí la ruta de su implementación.
 # ---------------------------------------------------------------------------
 VERDEAZUL_GANCHOS = {
-    # "autorizar": "autorizacion.motor.autorizar",
-    # "usuarios_con_rol": "cuentas.roles.usuarios_con_rol",
+    # Motor real: el PEP (Django) consulta al servicio autorizador por HTTP, con fallo cerrado.
+    "autorizar": "autorizacion.cliente.autorizar",
+    "usuarios_con_rol": "cuentas.roles.usuarios_con_rol",
     # "registrar_evento": "bitacora.servicios.registrar_evento",
     # "on_medicion_aprobada": "certificados.servicios.emitir",
 }
-# Sin motor de autorización configurado se NIEGA todo (fallo cerrado), excepto en
-# desarrollo local con DEBUG, para poder probar el flujo mientras Persona 3 termina.
-AUTORIZACION_PROVISIONAL_PERMISIVA = DEBUG
+# Solo aplica si se quita "autorizar" de VERDEAZUL_GANCHOS (p. ej. en pruebas de un
+# servicio aislado del motor): la implementación provisional niega todo salvo que
+# esto se active explícitamente. Ya no depende de DEBUG.
+AUTORIZACION_PROVISIONAL_PERMISIVA = False
 
 LOGGING = {
     "version": 1,

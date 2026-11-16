@@ -1,0 +1,70 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}{{ cuenta.username }}{% endblock %}
+{% block content %}
+  <h1>Cuenta {{ cuenta.username }}</h1>
+  <dl>
+    <dt>Nombre</dt><dd>{{ cuenta.get_full_name|default:"—" }}</dd>
+    <dt>Correo</dt><dd>{{ cuenta.email|default:"—" }}</dd>
+    <dt>Estado</dt><dd>{{ cuenta.estado }}{% if cuenta.estado_desde %} desde {{ cuenta.estado_desde }}{% endif %}</dd>
+    <dt>Roles vigentes</dt><dd>{{ roles|join:", "|default:"ninguno" }}</dd>
+    {% if ventana %}
+      <dt>Ventana de auditoría</dt><dd>{{ ventana.inicio }} a {{ ventana.fin }} ({{ ventana.estado }})</dd>
+    {% endif %}
+  </dl>
+  {% if gestiona %}
+    <ul>
+      {% if cuenta.estado != "INACTIVA" %}<li><a href="{% url 'gestion_cuenta_modificar' cuenta.pk %}">Modificar</a></li>{% endif %}
+      {% if cuenta.estado == "PENDIENTE" or cuenta.estado == "ACTIVA" %}
+        <li><a href="{% url 'gestion_cuenta_baja' cuenta.pk %}">Dar de baja</a></li>
+        {% if cuenta.estado == "ACTIVA" %}
+          <li><a href="{% url 'gestion_restablecimiento_solicitar' cuenta.pk %}">Solicitar restablecimiento del segundo factor</a></li>
+        {% endif %}
+        {% if sin_clave %}
+          <li>
+            <form method="post" action="{% url 'gestion_cuenta_enlace' cuenta.pk %}">{% csrf_token %}
+              <button type="submit">Generar enlace de activación</button>
+            </form>
+          </li>
+        {% endif %}
+      {% endif %}
+    </ul>
+  {% endif %}
+  {% if cierra_baja %}
+    <p><a href="{% url 'gestion_cuenta_cerrar_baja' cuenta.pk %}">Cerrar la baja (sincronización final sin registros)</a></p>
+  {% endif %}
+  <h2>Roles</h2>
+  {% if gestiona %}
+    <ul>
+      {% for rol in roles %}
+        <li>{{ rol }} · <a href="{% url 'gestion_rol_retirar' cuenta.pk rol %}">Retirar</a></li>
+      {% endfor %}
+    </ul>
+    {% if form_rol %}
+      <form method="post" action="{% url 'gestion_rol_asignar' cuenta.pk %}">{% csrf_token %}
+        {{ form_rol.as_p }}
+        <button type="submit">Asignar rol</button>
+      </form>
+      <p>GC y AE quedan como solicitud hasta que otro GC la autorice.</p>
+    {% endif %}
+  {% endif %}
+  {% if historial is not None %}
+    <h3>Historial de roles</h3>
+    <table>
+      <thead><tr><th>Rol</th><th>Desde</th><th>Hasta</th></tr></thead>
+      <tbody>
+        {% for r in historial %}
+          <tr><td>{{ r.rol }}</td><td>{{ r.vigente_desde }}</td><td>{{ r.vigente_hasta|default:"sin fin" }}</td></tr>
+        {% empty %}<tr><td colspan="3">Sin roles.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+  {% if solicitudes %}
+    <h3>Solicitudes de rol</h3>
+    <ul>
+      {% for s in solicitudes %}
+        <li>{{ s.get_tipo_display }} {{ s.rol }} · {{ s.estado }} · pedida por {{ s.solicitada_por.username }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+  <p><a href="{% url 'gestion_cuentas' %}">Volver a cuentas</a></p>
+{% endblock %}

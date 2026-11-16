@@ -1,0 +1,35 @@
+# Actualizaciones automáticas de dependencias de Verdeazul.
+#
+# IMPORTANTE: para que Dependabot abra los PRs hay que activarlo en GitHub en
+#   Settings -> Code security (o "Code security and analysis"):
+#     - Dependabot alerts
+#     - Dependabot security updates
+#     - Dependabot version updates (usa este archivo dependabot.yml)
+# Sin esa activación, este archivo no tiene efecto.
+
+version: 2
+
+updates:
+  # Dependencias Python declaradas en requirements.txt (raíz del repo).
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(pip)"
+    labels:
+      - "dependencias"
+      - "python"
+
+  # Imágenes base de Dockerfile y Dockerfile.autorizador (raíz del repo).
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(docker)"
+    labels:
+      - "dependencias"
+      - "docker"

@@ -1,0 +1,30 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Restablecimientos del segundo factor{% endblock %}
+{% block content %}
+  <h1>Restablecimientos del segundo factor</h1>
+  <h2>En curso</h2>
+  <table>
+    <thead><tr><th>Cuenta</th><th>Motivo</th><th>Pedido por</th><th>Fecha</th><th></th></tr></thead>
+    <tbody>
+      {% for r in en_curso %}
+        <tr>
+          <td>{{ r.usuario.username }}</td><td>{{ r.motivo }}</td><td>{{ r.solicitado_por.username }}</td>
+          <td>{{ r.solicitado_en }}</td>
+          <td>{% if resuelve and r.solicitado_por_id != user.pk and r.usuario_id != user.pk %}
+                <a href="{% url 'gestion_restablecimiento_autorizar' r.pk %}">Autorizar</a> ·
+                <a href="{% url 'gestion_restablecimiento_rechazar' r.pk %}">Rechazar</a>{% endif %}</td>
+        </tr>
+      {% empty %}<tr><td colspan="5">No hay solicitudes en curso.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  <h2>Resueltos</h2>
+  <table>
+    <thead><tr><th>Cuenta</th><th>Estado</th><th>Resuelto por</th><th>Verificación</th></tr></thead>
+    <tbody>
+      {% for r in resueltos %}
+        <tr><td>{{ r.usuario.username }}</td><td>{{ r.estado }}</td><td>{{ r.resuelto_por.username }}</td>
+            <td>{% if r.metodo_verificacion %}{{ r.get_metodo_verificacion_display }} ({{ r.verificado_en }}){% else %}{{ r.motivo_rechazo }}{% endif %}</td></tr>
+      {% empty %}<tr><td colspan="4">Ninguno.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

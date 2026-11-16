@@ -1,0 +1,255 @@
+# =============================================================================
+# CI/CD de Verdeazul: build -> push a Artifact Registry -> deploy a Cloud Run
+# =============================================================================
+# Flujo:
+#   1. build-and-push: construye las imágenes `app` (Dockerfile) y
+#      `autorizador` (Dockerfile.autorizador) y las publica en Artifact Registry
+#      con dos tags: la versión (tag git vX.Y.Z o IMAGE_VERSION) y sha-<hash>.
+#      Los despliegues usan el tag inmutable sha-<hash> (la versión es un alias).
+#   2. migrate: crea/actualiza el Cloud Run Job `verdeazul-migrate` y ejecuta
+#      `python manage.py migrate` con el rol DUEÑO de la base (secret aparte).
+#   3. deploy: publica `verdeazul-autorizador` (privado), autoriza a la service
+#      account de `verdeazul` a invocarlo (OIDC service-to-service) y publica
+#      `verdeazul` (público, con AUTORIZADOR_URL ya resuelta).
+#
+# Autenticación en GCP: Workload Identity Federation (sin llaves JSON).
+#
+# VARIABLES del repositorio (Settings -> Secrets and variables -> Actions -> Variables).
+# Son opcionales: el workflow trae fallback con los valores de este proyecto.
+#   GCP_PROJECT_ID                 ID del proyecto de GCP
+#   GCP_REGION                     Región de Cloud Run (por defecto us-east1)
+#   GCP_WORKLOAD_IDENTITY_PROVIDER projects/<NUMERO>/locations/global/workloadIdentityPools/<POOL>/providers/<PROVIDER>
+#   GCP_SERVICE_ACCOUNT            <sa-deploy>@<proyecto>.iam.gserviceaccount.com
+#       (roles mínimos: roles/run.admin, roles/artifactregistry.writer,
+#        roles/iam.serviceAccountUser, roles/secretmanager.secretAccessor y
+#        roles/browser, este último sólo para leer el número de proyecto en el
+#        primer despliegue, cuando `verdeazul` aún no existe)
+#   IMAGE_VERSION                  Versión usada en pushes a main (por defecto v1.0.0);
+#                                  en pushes de tag v* se usa el nombre del tag.
+#
+# Requisitos en GCP (creados fuera de este pipeline):
+#   - Artifact Registry: repo Docker `verdeazul` en us-east1.
+#   - Secret Manager: verdeazul-secret-key, verdeazul-db-url (rol no-dueño),
+#     verdeazul-migrate-db-url (rol dueño), verdeazul-allowed-hosts y
+#     verdeazul-csrf-origins.
+# =============================================================================
+
+name: Build, push y deploy
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+# Sólo se lee el código; el token OIDC lo emite GitHub para WIF.
+permissions:
+  contents: read
+  id-token: write
+
+# Un despliegue a la vez (sin cancelar el que está en curso).
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'project-4d85c806-d471-4964-b73' }}
+  REGION: ${{ vars.GCP_REGION || 'us-east1' }}
+  ARTIFACT_REPO: verdeazul
+  IMAGE_APP: app
+  IMAGE_AUTORIZADOR: autorizador
+  SERVICE_APP: verdeazul
+  SERVICE_AUTORIZADOR: verdeazul-autorizador
+  JOB_MIGRATE: verdeazul-migrate
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1) Construir y publicar las dos imágenes
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    name: Construir y publicar imágenes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha: ${{ steps.version.outputs.sha }}
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Calcular tags de imagen (versión + sha corto)
+        id: version
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            # Push de tag git: la versión es el propio tag (p. ej. v1.0.0).
+            VERSION="${GITHUB_REF#refs/tags/}"
+          else
+            # Push a main: versión configurable, por defecto v1.0.0.
+            VERSION="${{ vars.IMAGE_VERSION || 'v1.0.0' }}"
+          fi
+          SHA="sha-${GITHUB_SHA::7}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "sha=${SHA}" >> "${GITHUB_OUTPUT}"
+          echo "Se publicarán los tags: ${VERSION} y ${SHA}"
+
+      - name: Autenticar en Google Cloud (Workload Identity Federation)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER || 'projects/444812071990/locations/global/workloadIdentityPools/github/providers/github-oidc' }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT || 'verdeazul-deploy@project-4d85c806-d471-4964-b73.iam.gserviceaccount.com' }}
+          token_format: access_token
+
+      - name: Login en Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build y push de la imagen `app` (Django)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_APP }}:${{ steps.version.outputs.version }}
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_APP }}:${{ steps.version.outputs.sha }}
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,mode=max,scope=app
+
+      - name: Build y push de la imagen `autorizador`
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.autorizador
+          push: true
+          tags: |
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_AUTORIZADOR }}:${{ steps.version.outputs.version }}
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_AUTORIZADOR }}:${{ steps.version.outputs.sha }}
+          cache-from: type=gha,scope=autorizador
+          cache-to: type=gha,mode=max,scope=autorizador
+
+  # ---------------------------------------------------------------------------
+  # 2) Migraciones con el rol DUEÑO de la base (Cloud Run Job)
+  # ---------------------------------------------------------------------------
+  migrate:
+    name: Ejecutar migraciones
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Autenticar en Google Cloud (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER || 'projects/444812071990/locations/global/workloadIdentityPools/github/providers/github-oidc' }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT || 'verdeazul-deploy@project-4d85c806-d471-4964-b73.iam.gserviceaccount.com' }}
+
+      - name: Configurar gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      # El contenedor reutiliza la imagen de la app; Django exige SECRET_KEY al
+      # cargar settings, por eso también se inyecta aquí (además del DATABASE_URL
+      # del rol DUEÑO, que sólo se usa en este job).
+      - name: Crear o actualizar el Cloud Run Job de migraciones
+        run: |
+          gcloud run jobs deploy "${JOB_MIGRATE}" \
+            --image="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/${IMAGE_APP}:${{ needs.build-and-push.outputs.sha }}" \
+            --region="${REGION}" \
+            --service-account="verdeazul-migrate@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --command=python \
+            --args=manage.py,migrate \
+            --set-secrets=DATABASE_URL=verdeazul-migrate-db-url:latest,SECRET_KEY=verdeazul-secret-key:latest \
+            --task-timeout=15m \
+            --max-retries=1 \
+            --quiet
+        env:
+          JOB_MIGRATE: ${{ env.JOB_MIGRATE }}
+
+      - name: Ejecutar las migraciones (esperando el resultado)
+        run: |
+          gcloud run jobs execute "${JOB_MIGRATE}" \
+            --region="${REGION}" \
+            --wait \
+            --quiet
+        env:
+          JOB_MIGRATE: ${{ env.JOB_MIGRATE }}
+
+  # ---------------------------------------------------------------------------
+  # 3) Desplegar ambas revisiones en Cloud Run
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Desplegar en Cloud Run
+    needs:
+      - build-and-push
+      - migrate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Autenticar en Google Cloud (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER || 'projects/444812071990/locations/global/workloadIdentityPools/github/providers/github-oidc' }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT || 'verdeazul-deploy@project-4d85c806-d471-4964-b73.iam.gserviceaccount.com' }}
+
+      - name: Configurar gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      # El autorizador se despliega primero para poder pasar su URL interna a
+      # la app mediante AUTORIZADOR_URL.
+      - name: Desplegar `verdeazul-autorizador` (privado)
+        id: deploy_autorizador
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_AUTORIZADOR }}
+          region: ${{ env.REGION }}
+          image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_AUTORIZADOR }}:${{ needs.build-and-push.outputs.sha }}
+          # Servicio interno: sólo invocable con token OIDC válido.
+          # SA dedicada, sin acceso a secretos de base de datos.
+          flags: --no-allow-unauthenticated --max-instances=3 --service-account=verdeazul-autorizador@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+
+      - name: Service account de `verdeazul`
+        id: app_sa
+        run: |
+          set -euo pipefail
+          # SA dedicada del servicio público. Es la que recibe run.invoker
+          # sobre el autorizador y la que usa el metadata server para el OIDC.
+          SA="verdeazul-app@${PROJECT_ID}.iam.gserviceaccount.com"
+          echo "email=${SA}" >> "${GITHUB_OUTPUT}"
+          echo "Service account de ${SERVICE_APP}: ${SA}"
+
+      - name: Permitir que `verdeazul` invoque a `verdeazul-autorizador`
+        run: |
+          gcloud run services add-iam-policy-binding "${SERVICE_AUTORIZADOR}" \
+            --region="${REGION}" \
+            --member="serviceAccount:${{ steps.app_sa.outputs.email }}" \
+            --role="roles/run.invoker" \
+            --quiet
+
+      - name: Desplegar `verdeazul` (público)
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_APP }}
+          region: ${{ env.REGION }}
+          image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_APP }}:${{ needs.build-and-push.outputs.sha }}
+          # Se traduce a --set-env-vars.
+          env_vars: |
+            AUTORIZADOR_URL=${{ steps.deploy_autorizador.outputs.url }}
+          # Se traduce a --set-secrets=CLAVE=secreto:latest.
+          # DATABASE_URL usa el rol NO dueño (runtime de la app).
+          secrets: |
+            SECRET_KEY=verdeazul-secret-key:latest
+            DATABASE_URL=verdeazul-db-url:latest
+            ALLOWED_HOSTS=verdeazul-allowed-hosts:latest
+            CSRF_TRUSTED_ORIGINS=verdeazul-csrf-origins:latest
+          flags: --allow-unauthenticated --max-instances=5 --service-account=verdeazul-app@${{ env.PROJECT_ID }}.iam.gserviceaccount.com

@@ -1,0 +1,26 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Dispositivos de campo{% endblock %}
+{% block content %}
+  <h1>Dispositivos de campo</h1>
+  <table>
+    <thead><tr><th>Etiqueta</th><th>Responsable</th><th>Algoritmo</th><th>Huella</th><th>Estado</th><th></th></tr></thead>
+    <tbody>
+      {% for d in lista %}
+        <tr>
+          <td>{{ d.etiqueta }}</td><td>{{ d.responsable.username }}</td><td>{{ d.algoritmo }}</td>
+          <td><code>{{ d.huella|truncatechars:20 }}</code></td>
+          <td>{{ d.estado }}{% if d.revocado_en %} ({{ d.revocado_en }}){% endif %}</td>
+          <td>{% if form and d.estado == "ACTIVO" %}<a href="{% url 'gestion_dispositivo_revocar' d.pk %}">Revocar</a>{% endif %}</td>
+        </tr>
+      {% empty %}<tr><td colspan="6">No hay dispositivos.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  {% if form %}
+    <h2>Registrar dispositivo</h2>
+    <p>Solo se guarda la llave pública; la privada nunca sale del dispositivo.</p>
+    <form method="post">{% csrf_token %}
+      {{ form.as_p }}
+      <button type="submit">Registrar</button>
+    </form>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Enlace de activación{% endblock %}
+{% block content %}
+  <h1>Enlace de activación de {{ cuenta.username }}</h1>
+  <p>Entrégalo a la persona por un canal fuera del sistema. Sirve una sola vez y vence en 24 horas;
+     no se vuelve a mostrar.</p>
+  <p><code>{{ enlace }}</code></p>
+  <p><a href="{% url 'gestion_cuenta' cuenta.pk %}">Volver a la cuenta</a></p>
+{% endblock %}
