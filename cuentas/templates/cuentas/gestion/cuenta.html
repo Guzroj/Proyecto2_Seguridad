@@ -1,0 +1,30 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}{{ cuenta.username }}{% endblock %}
+{% block content %}
+  <h1>Cuenta {{ cuenta.username }}</h1>
+  <dl>
+    <dt>Nombre</dt><dd>{{ cuenta.get_full_name|default:"—" }}</dd>
+    <dt>Correo</dt><dd>{{ cuenta.email|default:"—" }}</dd>
+    <dt>Estado</dt><dd>{{ cuenta.estado }}{% if cuenta.estado_desde %} desde {{ cuenta.estado_desde }}{% endif %}</dd>
+    <dt>Roles vigentes</dt><dd>{{ roles|join:", "|default:"ninguno" }}</dd>
+    {% if ventana %}
+      <dt>Ventana de auditoría</dt><dd>{{ ventana.inicio }} a {{ ventana.fin }} ({{ ventana.estado }})</dd>
+    {% endif %}
+  </dl>
+  {% if gestiona %}
+    <ul>
+      {% if cuenta.estado != "INACTIVA" %}<li><a href="{% url 'gestion_cuenta_modificar' cuenta.pk %}">Modificar</a></li>{% endif %}
+      {% if cuenta.estado == "PENDIENTE" or cuenta.estado == "ACTIVA" %}
+        <li><a href="{% url 'gestion_cuenta_baja' cuenta.pk %}">Dar de baja</a></li>
+        {% if sin_clave %}
+          <li>
+            <form method="post" action="{% url 'gestion_cuenta_enlace' cuenta.pk %}">{% csrf_token %}
+              <button type="submit">Generar enlace de activación</button>
+            </form>
+          </li>
+        {% endif %}
+      {% endif %}
+    </ul>
+  {% endif %}
+  <p><a href="{% url 'gestion_cuentas' %}">Volver a cuentas</a></p>
+{% endblock %}

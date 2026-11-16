@@ -1,10 +1,8 @@
-<!doctype html>
-<html lang="es">
-<head><meta charset="utf-8"><title>Verdeazul</title></head>
-<body>
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Inicio{% endblock %}
+{% block content %}
   <h1>Verdeazul</h1>
   <p>Sesión iniciada como <strong>{{ user.username }}</strong> (cuenta {{ user.estado }}).</p>
   <p>Roles vigentes: {% if roles %}{{ roles|join:", " }}{% else %}ninguno{% endif %}</p>
   <form method="post" action="{% url 'account_logout' %}">{% csrf_token %}<button type="submit">Cerrar sesión</button></form>
-</body>
-</html>
+{% endblock %}

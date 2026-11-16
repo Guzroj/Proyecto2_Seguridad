@@ -72,6 +72,7 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "cuentas.sesion.ControlSesionMiddleware",  # inactividad por rol, 10 h, sesiones cerradas
+    "cuentas.errores.ErroresMiddleware",  # 403 / 404 / 400 / 409 de las pantallas (antes del reto RG6)
     "cuentas.mfa.ExigirMFAMiddleware",  # TC/VF/GC/AC sin TOTP solo pueden activarlo; reto RG6
     "autorizacion.pep.PeticionActualMiddleware",  # el PEP lee la edad del segundo factor de la petición
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -89,6 +90,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "cuentas.contexto.menu",
             ],
         },
     },
