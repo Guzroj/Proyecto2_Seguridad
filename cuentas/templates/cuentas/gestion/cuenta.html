@@ -16,6 +16,9 @@
       {% if cuenta.estado != "INACTIVA" %}<li><a href="{% url 'gestion_cuenta_modificar' cuenta.pk %}">Modificar</a></li>{% endif %}
       {% if cuenta.estado == "PENDIENTE" or cuenta.estado == "ACTIVA" %}
         <li><a href="{% url 'gestion_cuenta_baja' cuenta.pk %}">Dar de baja</a></li>
+        {% if cuenta.estado == "ACTIVA" %}
+          <li><a href="{% url 'gestion_restablecimiento_solicitar' cuenta.pk %}">Solicitar restablecimiento del segundo factor</a></li>
+        {% endif %}
         {% if sin_clave %}
           <li>
             <form method="post" action="{% url 'gestion_cuenta_enlace' cuenta.pk %}">{% csrf_token %}
@@ -25,6 +28,9 @@
         {% endif %}
       {% endif %}
     </ul>
+  {% endif %}
+  {% if cierra_baja %}
+    <p><a href="{% url 'gestion_cuenta_cerrar_baja' cuenta.pk %}">Cerrar la baja (sincronización final sin registros)</a></p>
   {% endif %}
   <h2>Roles</h2>
   {% if gestiona %}

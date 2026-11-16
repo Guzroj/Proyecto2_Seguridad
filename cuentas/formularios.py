@@ -7,6 +7,9 @@ para cambiar datos.
 from django import forms
 
 from autorizacion import roles
+from nucleo import ganchos
+
+from .models import MetodoVerificacion
 
 class CuentaNuevaForm(forms.Form):
     username = forms.CharField(label="Usuario", max_length=150)
@@ -32,3 +35,25 @@ class AsignarRolForm(forms.Form):
 
 class MotivoForm(forms.Form):
     motivo = forms.CharField(label="Motivo", max_length=500, required=False, widget=forms.Textarea(attrs={"rows": 3}))
+
+
+class MotivoRequeridoForm(forms.Form):
+    motivo = forms.CharField(label="Motivo", max_length=500, widget=forms.Textarea(attrs={"rows": 3}))
+
+
+class DispositivoForm(forms.Form):
+    responsable = forms.ModelChoiceField(label="Responsable (TC)", queryset=None)
+    etiqueta = forms.CharField(label="Etiqueta", max_length=100)
+    llave_publica = forms.CharField(label="Llave pública (PEM, Ed25519 o P-256)", max_length=2000,
+                                    widget=forms.Textarea(attrs={"rows": 6}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["responsable"].queryset = ganchos.usuarios_con_rol("TC").order_by("username")
+
+
+class VerificacionForm(forms.Form):
+    metodo_verificacion = forms.ChoiceField(label="Cómo se verificó la identidad", choices=MetodoVerificacion.choices)
+    verificado_en = forms.DateTimeField(label="Cuándo (hora de Costa Rica)",
+                                        widget=forms.DateTimeInput(attrs={"type": "datetime-local"}),
+                                        input_formats=["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"])

@@ -15,6 +15,13 @@ Roles y ventanas (O7b, O7a AU):
   rol_asignar, rol_retirar      C7 AR, RR (AC); GC y AE quedan como solicitud
   solicitudes_rol               lista; GC autoriza o rechaza (C7 AU, RE)
   ventanas                      lista; GC aprueba (C14)
+
+Dispositivos, segundo factor, alertas y cierre de baja:
+  dispositivos, dispositivo_revocar          C18 CR, RV (AC)
+  restablecimiento_solicitar                 C17 SO (AC, desde la ficha)
+  restablecimientos, restablecimiento_*      lista; GC autoriza con la verificación o rechaza (C17)
+  alertas, alerta_resolver                   O9 L (GC, AE); GC resuelve (C22)
+  cuenta_cerrar_baja                         C16 SI (GC): sincronización final vacía de un TC EN_BAJA
 """
 
 from django.contrib import messages
@@ -28,8 +35,28 @@ from nucleo.acciones import Accion
 from nucleo.errores import AccesoDenegado, DatoInvalido, FueraDeAlcance, ReglaNegocio
 
 from . import services
-from .formularios import AsignarRolForm, CuentaModificarForm, CuentaNuevaForm, MotivoForm
-from .models import EstadoSolicitudRol, EstadoVentana, SolicitudRol, Usuario, VentanaAuditoria
+from .formularios import (
+    AsignarRolForm,
+    CuentaModificarForm,
+    CuentaNuevaForm,
+    DispositivoForm,
+    MotivoForm,
+    MotivoRequeridoForm,
+    VerificacionForm,
+)
+from .models import (
+    Alerta,
+    DispositivoCampo,
+    EstadoAlerta,
+    EstadoRestablecimiento,
+    EstadoSolicitudRol,
+    EstadoVentana,
+    RestablecimientoFactor,
+    SolicitudRol,
+    Usuario,
+    VentanaAuditoria,
+)
+from .selectores import metadatos_factores
 from .selectores import roles_vigentes
 
 
@@ -97,6 +124,7 @@ def cuenta(request, pk):
         "historial": historial.filter(usuario=cuenta).order_by("-vigente_desde") if historial is not None else None,
         "solicitudes": solicitudes.filter(usuario=cuenta).order_by("-solicitada_en") if solicitudes is not None else None,
         "form_rol": AsignarRolForm() if gestiona and cuenta.estado == "ACTIVA" else None,
+        "cierra_baja": "GC" in roles_vigentes(request.user) and cuenta.estado == "EN_BAJA",
     }
     return render(request, "cuentas/gestion/cuenta.html", contexto)
 
@@ -270,4 +298,156 @@ def ventana_aprobar(request, pk):
         "titulo": f"Aprobar la ventana de {ventana.auditor.username}", "boton": "Aprobar",
         "aviso": f"Del {ventana.inicio} al {ventana.fin}, pedida por {ventana.solicitada_por.username}. "
                  "La cuenta se activa el día de inicio y se da de baja al terminar.",
+    })
+
+
+# ---------------------------------------------------------------------------
+# Dispositivos de campo (O7c)
+# ---------------------------------------------------------------------------
+@login_required
+@require_http_methods(["GET", "POST"])
+def dispositivos(request):
+    lista = listar(request.user, "dispositivos").select_related("responsable").order_by("estado", "-registrado_en")
+    registra = "AC" in roles_vigentes(request.user)
+    form = DispositivoForm(request.POST or None) if registra else None
+    estado = 200
+    if request.method == "POST":
+        if form is None:
+            raise AccesoDenegado("Solo AC registra dispositivos.")
+        if form.is_valid():
+            try:
+                d = services.registrar_dispositivo(request.user, form.cleaned_data["responsable"],
+                                                   etiqueta=form.cleaned_data["etiqueta"],
+                                                   llave_publica=form.cleaned_data["llave_publica"])
+            except ReglaNegocio as exc:
+                form.add_error(None, str(exc))
+            else:
+                messages.success(request, f"Dispositivo {d.etiqueta} registrado (huella {d.huella[:16]}…).")
+                return redirect("gestion_dispositivos")
+        estado = 400
+    return render(request, "cuentas/gestion/dispositivos.html", {"lista": lista, "form": form}, status=estado)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def dispositivo_revocar(request, pk):
+    d = _objeto(request.user, DispositivoCampo, pk, Accion.DISPOSITIVO_LEER, "dispositivo")
+    form = MotivoForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        services.revocar_dispositivo(request.user, d, motivo=form.cleaned_data["motivo"])
+        messages.success(request, f"Dispositivo {d.etiqueta} revocado.")
+        return redirect("gestion_dispositivos")
+    return render(request, "cuentas/gestion/confirmar.html", {
+        "titulo": f"Revocar {d.etiqueta} de {d.responsable.username}", "boton": "Revocar", "form": form,
+        "aviso": "Es definitivo: los registros firmados con esta llave después de revocarla no se aceptan.",
+    })
+
+
+# ---------------------------------------------------------------------------
+# Restablecimiento del segundo factor (O7d)
+# ---------------------------------------------------------------------------
+@login_required
+@require_http_methods(["GET", "POST"])
+def restablecimiento_solicitar(request, pk):
+    cuenta = _cuenta(request.user, pk)
+    form = MotivoRequeridoForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        services.solicitar_restablecimiento(request.user, cuenta, motivo=form.cleaned_data["motivo"])
+        messages.success(request, "Solicitud registrada: la autoriza un GC tras verificar la identidad.")
+        return redirect("gestion_cuenta", pk=cuenta.pk)
+    return render(request, "cuentas/gestion/confirmar.html", {
+        "titulo": f"Restablecer el segundo factor de {cuenta.username}", "boton": "Solicitar", "form": form,
+        "aviso": "Un GC distinto verificará la identidad de la persona fuera del sistema antes de autorizar.",
+    }, status=400 if request.method == "POST" else 200)
+
+
+@login_required
+def restablecimientos(request):
+    lista = listar(request.user, "restablecimientos").select_related("usuario", "solicitado_por", "resuelto_por")
+    return render(request, "cuentas/gestion/restablecimientos.html", {
+        "en_curso": lista.filter(estado=EstadoRestablecimiento.SOLICITADO).order_by("solicitado_en"),
+        "resueltos": lista.exclude(estado=EstadoRestablecimiento.SOLICITADO).order_by("-resuelto_en")[:50],
+        "resuelve": "GC" in roles_vigentes(request.user),
+    })
+
+
+def _restablecimiento(request, pk):
+    return _objeto(request.user, RestablecimientoFactor, pk, Accion.FACTOR_LEER, "restablecimiento_factor")
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def restablecimiento_autorizar(request, pk):
+    r = _restablecimiento(request, pk)
+    autorizar_lectura(request.user, Accion.FACTOR_LEER, r.usuario, "cuenta")  # C17: metadatos, nunca secretos
+    form = VerificacionForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        try:
+            services.autorizar_restablecimiento(request.user, r, **form.cleaned_data)
+        except ReglaNegocio as exc:
+            form.add_error(None, str(exc))
+        else:
+            messages.success(request, f"Factores de {r.usuario.username} invalidados y sesiones cerradas.")
+            return redirect("gestion_restablecimientos")
+    return render(request, "cuentas/gestion/restablecimiento.html", {
+        "r": r, "factores": metadatos_factores(r.usuario), "form": form,
+    }, status=400 if request.method == "POST" else 200)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def restablecimiento_rechazar(request, pk):
+    r = _restablecimiento(request, pk)
+    form = MotivoRequeridoForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        services.rechazar_restablecimiento(request.user, r, motivo=form.cleaned_data["motivo"])
+        messages.success(request, "Restablecimiento rechazado.")
+        return redirect("gestion_restablecimientos")
+    return render(request, "cuentas/gestion/confirmar.html", {
+        "titulo": f"Rechazar el restablecimiento de {r.usuario.username}", "boton": "Rechazar", "form": form,
+    }, status=400 if request.method == "POST" else 200)
+
+
+# ---------------------------------------------------------------------------
+# Alertas (O9) y cierre de la baja de un técnico (C16)
+# ---------------------------------------------------------------------------
+@login_required
+def alertas(request):
+    lista = listar(request.user, "alertas").select_related("sujeto", "resuelta_por")
+    return render(request, "cuentas/gestion/alertas.html", {
+        "abiertas": lista.filter(estado=EstadoAlerta.ABIERTA).order_by("prioridad", "-creada_en"),
+        "resueltas": lista.filter(estado=EstadoAlerta.RESUELTA).order_by("-resuelta_en")[:50],
+        "resuelve": "GC" in roles_vigentes(request.user),
+    })
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def alerta_resolver(request, pk):
+    alerta = _objeto(request.user, Alerta, pk, Accion.ALERTA_LEER, "alerta")
+    form = MotivoRequeridoForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        services.resolver_alerta(request.user, alerta, motivo=form.cleaned_data["motivo"])
+        messages.success(request, "Alerta resuelta." + (" Se levantó la suspensión." if alerta.bloqueante else ""))
+        return redirect("gestion_alertas")
+    return render(request, "cuentas/gestion/confirmar.html", {
+        "titulo": f"Resolver la alerta {alerta.control} de {alerta.sujeto.username}", "boton": "Resolver",
+        "form": form,
+        "aviso": "Una alerta H1 suspende las lecturas de la persona; al resolverla, su primera lectura pide "
+                 "segundo factor." if alerta.bloqueante else "",
+    }, status=400 if request.method == "POST" else 200)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def cuenta_cerrar_baja(request, pk):
+    cuenta = _cuenta(request.user, pk)
+    if request.method == "POST":
+        services.cerrar_baja_tecnico(request.user, cuenta)
+        messages.success(request, f"Baja de {cuenta.username} cerrada: dispositivos revocados, cuenta INACTIVA.")
+        return redirect("gestion_cuenta", pk=cuenta.pk)
+    return render(request, "cuentas/gestion/confirmar.html", {
+        "titulo": f"Cerrar la baja de {cuenta.username}", "boton": "Cerrar la baja",
+        "aviso": "Sincronización final sin registros pendientes: se revocan sus dispositivos y la cuenta "
+                 "queda INACTIVA.",
     })
