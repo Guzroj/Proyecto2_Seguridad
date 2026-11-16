@@ -37,6 +37,7 @@ DONDE = {
     "finca:crear": [S_CAT + "crear_finca"], "finca:modificar": [S_CAT + "modificar_finca"],
     "finca:baja": [S_CAT + "dar_baja_finca"], "parcela:crear": [S_CAT + "crear_parcela"],
     "parcela:modificar_geometria": [S_CAT + "modificar_geometria"], "parcela:baja": [S_CAT + "dar_baja_parcela"],
+    "propietario:crear_datos": [S_CAT + "registrar_datos_propietario"],
     "propietario:registrar_datos": [S_CAT + "registrar_datos_propietario"],
     "periodo:abrir": [S_MED + "abrir_periodo"], "periodo:pasar_verificacion": [S_MED + "pasar_a_verificacion"],
     "periodo:cerrar": [S_MED + "cerrar_periodo"],
@@ -159,9 +160,7 @@ RLS = {
     "O7d": ["cuentas/test_restablecimiento.py::C17RLSTests", "cuentas/test_mfa.py::PreingresoRLSTests"],
     "O9": ["cuentas/test_alertas.py::AlertasRLSTests"],
 }
-SIN_ACCION_PROPIA = {
-    ("AC", "O1b", "CR"): "sin acción propia: el alta pasa por propietario:registrar_datos (MO)",
-}
+SIN_ACCION_PROPIA: dict[tuple[str, str, str], str] = {}  # hoy ninguna (AC·O1b CR: propietario:crear_datos)
 
 
 def texto_celda(celda: dict) -> str:
@@ -235,7 +234,8 @@ def generar() -> str:
         "  aplicación del lado Django (PEP) es el servicio o la pantalla que llama a `autorizar()`, o",
         "  `autorizacion/listas.py:listar` para las listas (`<objeto>:listar`).",
         "- **Pruebas**: `archivo::Clase[.método]`. `CeldaPorCeldaTests` revisa en el motor real cada rol con cada",
-        "  acción (468 combinaciones): fuera de la celda niega por RG1; sin condiciones concede; con condiciones,",
+        f"  acción ({len(matriz.MATRIZ) * len(matriz.ACCIONES)} combinaciones): fuera de la celda niega por RG1;"
+        " sin condiciones concede; con condiciones,",
         "  las evalúa. Cada condición tiene además sus pruebas propias y de integración; la última parte de la",
         "  columna son las pruebas de RLS de esa columna (defensa en profundidad).",
         "",
@@ -248,9 +248,9 @@ def generar() -> str:
         "",
         "## Observaciones",
         "",
-        "- **AC·O1b CR** no tiene una acción propia: `catalogo/services.py:registrar_datos_propietario` crea o",
-        "  actualiza los datos personales y siempre se autoriza como `propietario:registrar_datos` (MO, C20).",
-        "  `autorizacion/test_cobertura.py::CeldaPorCeldaTests` lo registra como excepción conocida.",
+        "- **AC·O1b CR y MO**: `catalogo/services.py:registrar_datos_propietario` se autoriza como",
+        "  `propietario:crear_datos` (CR) si el propietario aún no tiene datos y como `propietario:registrar_datos`",
+        "  (MO) si ya los tiene.",
         "- **O1–O6 y O8**: el motor y el cliente ya deciden las lecturas, exportaciones y listas; las pantallas",
         "  que las llaman son de Persona 2 (O1–O5) y Persona 4 (O6, O8). La lista de O6 y O8 se agrega en",
         "  `autorizacion/listas.py` cuando existan sus modelos.",
