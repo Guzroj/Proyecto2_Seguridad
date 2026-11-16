@@ -4,6 +4,12 @@ app_runtime (SET ROLE) y los servicios reales autorizando con el motor.
 
 17a: catálogo (O1a, O1b), períodos (O2) y asignaciones (O3). Lectura por finca
 relacionada; escritura solo de quien la matriz deja escribir; nadie borra.
+17b: mediciones (O4), actores, enmiendas (O5), motivos y la vía de proceso del
+certificado (O1b solo para el VF que aprueba, solo nombre e identificación).
+
+Como en Neon, las funciones SECURITY DEFINER tienen un dueño sin privilegios de
+superusuario, así que RLS también aplica dentro de ellas (y se prueba que las
+políticas no se llaman a sí mismas sin fin).
 """
 
 import unittest
@@ -15,12 +21,13 @@ except ImportError:
 
 from contextlib import contextmanager
 from datetime import date
+from types import SimpleNamespace
 from unittest import mock
 
 from django.db import DatabaseError, connection, transaction
 from django.test import override_settings
 
-from autorizacion import cliente, pep
+from autorizacion import cliente, pep, procesos
 from autorizacion.listas import listar
 from autorizacion.test_integracion_o1_o3 import POLIGONO
 from autorizacion.test_integracion_o4_o6 import DATOS
@@ -32,9 +39,20 @@ from cuentas import rls
 from cuentas.rls import FASE_PREINGRESO
 from cuentas.test_rls import ROL
 from mediciones import services as mediciones
-from mediciones.models import Asignacion, Periodo
+from mediciones.models import Asignacion, Enmienda, Medicion, MedicionActor, MotivoDevolucion, Periodo
 from nucleo.acciones import Accion
-from nucleo.errores import AccesoDenegado
+from nucleo.errores import AccesoDenegado, FueraDeAlcance
+
+
+DUENO = "verdeazul_dueno_prueba"
+DEFINIDAS = ("app_ve_finca(bigint)", "app_ve_parcela(bigint)", "certificado_datos_propietario(uuid)",
+             "cuentas_media_lecturas_rol(text, timestamptz, timestamptz)")
+EMITIDOS = []
+
+
+def emitir_prueba(medicion):
+    """on_medicion_aprobada de prueba: lo que haría Persona 4 al emitir el certificado."""
+    EMITIDOS.append(procesos.datos_propietario_para_certificado(medicion))
 
 
 class RLSDominioBase(ListasBase):
@@ -49,17 +67,24 @@ class RLSDominioBase(ListasBase):
             c.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {ROL}")
             c.execute(f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {ROL}")
             c.execute(f"GRANT EXECUTE ON FUNCTION cuentas_media_lecturas_rol(text, timestamptz, timestamptz) TO {ROL}")
+            c.execute(f"GRANT EXECUTE ON FUNCTION certificado_datos_propietario(uuid) TO {ROL}")
+            c.execute(f"CREATE ROLE {DUENO} NOLOGIN NOSUPERUSER NOBYPASSRLS")
+            c.execute(f"GRANT USAGE, CREATE ON SCHEMA public TO {DUENO}")
+            c.execute(f"GRANT SELECT ON ALL TABLES IN SCHEMA public TO {DUENO}")
+            for funcion in DEFINIDAS:
+                c.execute(f"ALTER FUNCTION {funcion} OWNER TO {DUENO}")
 
     @contextmanager
     def como(self, usuario=None, fase=None):
+        """Como app_runtime en Neon: session_user = current_user = el rol de la app."""
         with connection.cursor() as c:
-            c.execute(f"SET ROLE {ROL}")
+            c.execute(f"SET SESSION AUTHORIZATION {ROL}")
         rls.fijar_contexto(usuario_id=getattr(usuario, "pk", None), fase=fase)
         try:
             yield
         finally:
             with connection.cursor() as c:
-                c.execute("RESET ROLE")
+                c.execute("RESET SESSION AUTHORIZATION")
             rls.fijar_contexto()
 
     def sql(self, consulta, params=()):
@@ -179,3 +204,149 @@ class PEPFallaCerradaTests(RLSDominioBase):
         with mock.patch.object(pep, "construir_solicitud", side_effect=Finca.DoesNotExist), \
                 self.assertRaises(AccesoDenegado):
             cliente.autorizar(self.gc, Accion.FINCA_LEER, self.finca)
+
+
+# ---------------------------------------------------------------------------
+# 17b · Mediciones, actores, enmiendas, motivos y certificado
+# ---------------------------------------------------------------------------
+class RLSMedicionesBase(RLSDominioBase):
+    def setUp(self):
+        super().setUp()
+        EMITIDOS.clear()
+        self.motivo = MotivoDevolucion.objects.create(codigo="conteo", descripcion="Conteo incompleto")
+        parche = override_settings(VERDEAZUL_GANCHOS={**GANCHOS,
+                                                      "on_medicion_aprobada": "cuentas.test_rls_dominio.emitir_prueba"})
+        parche.enable()
+        self.addCleanup(parche.disable)
+
+    def con_mfa(self, usuario):
+        marca = pep.peticion_actual.set(SimpleNamespace(user=usuario, session={}))
+        self.addCleanup(pep.peticion_actual.reset, marca)
+        parche = mock.patch("cuentas.mfa.edad_mfa", return_value=10.0)
+        parche.start()
+        self.addCleanup(parche.stop)
+
+
+class LecturaMedicionesTests(RLSMedicionesBase):
+    def test_por_finca_relacionada(self):
+        de_finca = set(Medicion.objects.filter(parcela__finca=self.finca).values_list("pk", flat=True))
+        de_finca2 = {self.medicion2.pk}
+        casos = [(self.pf, de_finca), (self.tc, de_finca), (self.vf, de_finca), (self.tc2, de_finca2),
+                 (self.pf2, de_finca2), (self.vf2, set()), (self.mixto, set()),
+                 (self.gc, de_finca | de_finca2), (self.ac, de_finca | de_finca2), (self.ae, de_finca | de_finca2)]
+        for usuario, esperadas in casos:
+            with self.subTest(usuario=usuario.username):
+                self.assertEqual(self.visibles(Medicion, usuario), esperadas)
+                actores = set(MedicionActor.objects.filter(medicion_id__in=esperadas).values_list("pk", flat=True))
+                self.assertEqual(self.visibles(MedicionActor, usuario), actores)
+                enmiendas = set(Enmienda.objects.filter(medicion_original_id__in=esperadas)
+                                .values_list("pk", flat=True))
+                self.assertEqual(self.visibles(Enmienda, usuario), enmiendas)
+
+    def test_anonimo_y_preingreso_no_ven_nada(self):
+        for modelo in (Medicion, MedicionActor, Enmienda, MotivoDevolucion):
+            with self.subTest(modelo=modelo.__name__):
+                self.assertEqual(self.visibles(modelo), set())
+                self.assertEqual(self.visibles(modelo, self.gc, fase=FASE_PREINGRESO), set())
+        self.assertEqual(self.visibles(MotivoDevolucion, self.vf), {self.motivo.pk})
+
+
+class FlujoMedicionesTests(RLSMedicionesBase):
+    def test_enmienda_autorizada_y_version_aprobada_con_certificado(self):
+        enmienda = Enmienda.objects.get(pk=self.enmienda.pk)
+        with self.como(self.gc):
+            self.con_mfa(self.gc)
+            enmienda = mediciones.autorizar_enmienda(self.gc, enmienda)
+        version = Medicion.objects.get(pk=enmienda.version_id)
+        self.assertEqual((version.autor, version.verificador), (self.tc, self.vf2))
+        self.assertTrue(MedicionActor.objects.filter(medicion=version, accion="HEREDADO").exists())
+        with self.como(self.vf2):
+            self.con_mfa(self.vf2)
+            self.assertEqual(DatosPropietario.objects.count(), 0)                 # VF no tiene O1b
+            mediciones.aprobar_medicion(self.vf2, version)
+        self.assertEqual(Enmienda.objects.get(pk=enmienda.pk).estado, "APLICADA")
+        propios = DatosPropietario.objects.get(usuario=self.pf)
+        self.assertEqual(EMITIDOS, [{"nombre_completo": propios.nombre_completo,
+                                     "identificacion": propios.identificacion}])
+
+    def test_crear_enviar_y_devolver(self):
+        with self.como(self.ac):
+            parcela = catalogo.crear_parcela(self.ac, self.finca, codigo="P4", area_ha="1", geometria=POLIGONO)
+        with self.como(self.tc):
+            m = mediciones.crear_medicion(self.tc, parcela, self.periodo, **DATOS)
+            m = mediciones.modificar_medicion(self.tc, m, numero_arboles=140)
+            with mock.patch("mediciones.services._azar.choice", side_effect=lambda c: next(u for u in c if u == self.vf)):
+                m = mediciones.enviar_medicion(self.tc, m)
+        with self.como(self.vf):
+            self.con_mfa(self.vf)
+            m = mediciones.devolver_medicion(self.vf, m, self.motivo)
+        self.assertEqual((m.estado, m.verificador), ("DEVUELTA", self.vf))
+
+
+class EscrituraMedicionesTests(RLSMedicionesBase):
+    def test_solo_autor_verificador_o_gc_en_su_papel(self):
+        m = str(self.medicion.pk)
+        with self.como(self.tc2):
+            self.assertEqual(self.sql("UPDATE mediciones_medicion SET observaciones = 'x' WHERE id = %s", [m]), 0)
+        with self.como(self.vf2):
+            self.assertEqual(self.sql("UPDATE mediciones_medicion SET observaciones = 'x' WHERE id = %s", [m]), 0)
+        with self.como(self.pf):
+            self.assertIsInstance(self.sql("UPDATE mediciones_medicion SET observaciones = 'x' WHERE id = %s", [m]),
+                                  DatabaseError)
+        with self.como(self.gc):
+            self.assertIsInstance(self.sql("UPDATE mediciones_medicion SET observaciones = 'x' WHERE id = %s", [m]),
+                                  DatabaseError)
+        with self.como(self.vf):                                                # su verificador sí
+            self.assertEqual(self.sql("UPDATE mediciones_medicion SET observaciones = 'x' WHERE id = %s", [m]), 1)
+
+    def test_altas_a_nombre_propio(self):
+        m = str(self.medicion.pk)
+        with self.como(self.tc):
+            self.assertIsInstance(self.sql(
+                "INSERT INTO mediciones_medicionactor (medicion_id, usuario_id, accion, fecha) "
+                "VALUES (%s, %s, 'APROBAR', now())", [m, self.vf2.pk]), DatabaseError)
+            self.assertIsInstance(self.sql(
+                "INSERT INTO mediciones_enmienda (medicion_original_id, solicitante_id, justificacion, estado, "
+                "solicitada_en, numero_arboles, dap_promedio_cm, altura_promedio_m, observaciones) "
+                "VALUES (%s, %s, 'x', 'SOLICITADA', now(), 1, 1, 1, '')", [m, self.tc2.pk]), DatabaseError)
+        with self.como(self.gc):                                                # GC no crea originales
+            self.assertIsInstance(self.sql(
+                "INSERT INTO mediciones_medicion (id, parcela_id, parcela_version_id, periodo_id, autor_id, estado, "
+                "numero_arboles, dap_promedio_cm, altura_promedio_m, observaciones, toneladas_co2, creada_en, "
+                "comentario_devolucion) "
+                "SELECT gen_random_uuid(), parcela_id, parcela_version_id, periodo_id, autor_id, 'ENVIADA', "
+                "numero_arboles, dap_promedio_cm, altura_promedio_m, '', toneladas_co2, now(), '' "
+                "FROM mediciones_medicion WHERE id = %s", [m]), DatabaseError)
+        with self.como(self.vf):
+            self.assertEqual(self.sql("UPDATE mediciones_motivodevolucion SET activo = false"), 0)  # catálogo cerrado
+
+    def test_nadie_borra(self):
+        for usuario in (self.tc, self.vf, self.gc):
+            with self.como(usuario):
+                for tabla in ("mediciones_medicion", "mediciones_medicionactor", "mediciones_enmienda",
+                              "mediciones_motivodevolucion"):
+                    with self.subTest(usuario=usuario.username, tabla=tabla):
+                        self.assertEqual(self.sql(f"DELETE FROM {tabla}"), 0)
+
+
+class CertificadoTests(RLSMedicionesBase):
+    def test_solo_el_verificador_de_una_aprobada(self):
+        propios = DatosPropietario.objects.get(usuario=self.pf)
+        with self.como(self.vf):
+            self.assertEqual(procesos.datos_propietario_para_certificado(self.medicion),
+                             {"nombre_completo": propios.nombre_completo, "identificacion": propios.identificacion})
+            with self.assertRaises(FueraDeAlcance):
+                procesos.datos_propietario_para_certificado(self.medicion2)   # no aprobada ni suya
+        for usuario in (self.tc, self.vf2, self.gc, self.pf2):
+            with self.subTest(usuario=usuario.username), self.como(usuario), self.assertRaises(FueraDeAlcance):
+                procesos.datos_propietario_para_certificado(self.medicion)
+
+    def test_las_fases_internas_no_abren_nada_desde_afuera(self):
+        # Solo valen dentro de las funciones (current_user = su dueño ≠ session_user):
+        # fijadas por la app, el sujeto ve exactamente lo mismo que sin ellas.
+        for fase in ("certificado", "ve_finca"):
+            with self.subTest(fase=fase):
+                for modelo in (DatosPropietario, Finca, Medicion, Asignacion, Enmienda):
+                    self.assertEqual(self.visibles(modelo, self.tc2, fase=fase), self.visibles(modelo, self.tc2))
+                self.assertEqual(self.visibles(DatosPropietario, self.tc2, fase=fase), set())
+                self.assertEqual(self.visibles(Finca, self.tc2, fase=fase), {self.finca2.pk})
