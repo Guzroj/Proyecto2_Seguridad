@@ -27,7 +27,13 @@ from mediciones import services as mediciones
 from nucleo.acciones import Accion
 from nucleo.errores import AccesoDenegado
 
-POLIGONO = {"type": "Polygon", "coordinates": [[[-84.0, 10.0], [-84.0, 10.01], [-83.99, 10.01], [-84.0, 10.0]]]}
+def poligono(n: int = 0) -> dict:
+    """Un triángulo distinto por n, separados entre sí: C20 rechaza parcelas que se traslapan."""
+    x = -84.0 + 0.02 * n
+    return {"type": "Polygon", "coordinates": [[[x, 10.0], [x, 10.01], [x + 0.01, 10.01], [x, 10.0]]]}
+
+
+POLIGONO = poligono(0)
 
 
 def decidir(usuario, accion, recurso=None, contexto=None):

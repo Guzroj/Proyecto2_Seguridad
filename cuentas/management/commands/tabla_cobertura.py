@@ -126,6 +126,7 @@ TC, TI1, TI2, TI3 = ("autorizacion/test_condiciones.py::", "autorizacion/test_in
                      "autorizacion/test_integracion_o4_o6.py::", "autorizacion/test_integracion_o7_o9.py::")
 TL, TP, TPR, TPI = ("autorizacion/test_listas.py::", "cuentas/test_pantallas.py::",
                     "cuentas/test_pantallas_roles.py::", "cuentas/test_pantallas_identidad.py::")
+TD = "mediciones/test_disparadores.py::"  # la base revalida con disparadores (defensa en profundidad)
 
 SIEMPRE = ["autorizacion/test_cobertura.py::CeldaPorCeldaTests", "autorizacion/test_reglas.py::MatrizTests"]
 VACIA = ["autorizacion/test_reglas.py::DecisionTests.test_rg1_denegacion_por_defecto"]
@@ -133,7 +134,8 @@ SIN_CONDICION = ["autorizacion/test_reglas.py::DecisionTests.test_celdas_sin_con
 
 POR_CONDICION = {
     "C1": [TC + "C1Tests", TI2 + "O4Tests.test_c1_crear", TI2 + "O4Tests.test_v3_corrige_su_devuelta_con_el_periodo_en_verificacion"],
-    "C2": [TC + "C2Tests", TI2 + "O4Tests.test_c2_aprobar_y_v4"],
+    "C2": [TC + "C2Tests", TI2 + "O4Tests.test_c2_aprobar_y_v4",
+           TD + "MedicionTests.test_c2_con_sujeto_solo_aprueba_el_verificador_asignado"],
     "C3": [TC + "C3Tests", TI2 + "EnmiendaTests.test_v15_solicitar_autorizar_y_aprobar_la_version"],
     "C4": [TC + "C4Tests", TI1 + "LecturasTests.test_c4_pf_ve_lo_suyo", TL + "AlcanceTests.test_pf_solo_ve_lo_suyo"],
     "C5": [TC + "C5Tests", TI3 + "VentanaYAuditorTests", TL + "AlcanceTests.test_ae_fuera_de_su_ventana_no_lista"],
@@ -147,7 +149,7 @@ POR_CONDICION = {
     "C10": [TC + "C1Tests.test_c10_tc_lee_sus_mediciones", TI2 + "O4Tests.test_c1_modificar_y_enviar_y_c10_leer"],
     "C11": [TC + "C11C12Tests.test_c11_solicitar", TI2 + "EnmiendaTests.test_v15_solicitar_autorizar_y_aprobar_la_version"],
     "C12": [TC + "C11C12Tests.test_c12_leer", TL + "AlcanceTests.test_tc_ve_lo_asignado_y_lo_suyo"],
-    "C13": [TC + "C13Tests", TI1 + "EscriturasTests.test_c13_y_v16"],
+    "C13": [TC + "C13Tests", TI1 + "EscriturasTests.test_c13_y_v16", TD + "PeriodoTests"],
     "C14": [TC + "C14C15Tests.test_c14", TI3 + "VentanaYAuditorTests.test_c14_y_c5", TPR + "VentanasTests"],
     "C15": [TC + "C14C15Tests.test_c15", TI3 + "CuentasYRolesTests.test_c15", TP + "AltaTests", TP + "CambiosTests"],
     "C16": [TC + "C16Tests", TI2 + "C16Tests", TPI + "CierreBajaTests"],
@@ -155,8 +157,9 @@ POR_CONDICION = {
             TC + "C17C18Tests.test_c17_leer_gc_solo_lo_que_podria_resolver", TI3 + "DispositivosFactorYAlertasTests.test_c17",
             TL + "RestablecimientosGCTests", TPI + "RestablecimientoTests"],
     "C18": [TC + "C17C18Tests.test_c18", TI3 + "DispositivosFactorYAlertasTests.test_c18", TPI + "DispositivosTests"],
-    "C19": [TC + "C19Tests", TI1 + "EscriturasTests.test_c19_y_v17"],
-    "C20": [TC + "C20Tests", TI1 + "EscriturasTests.test_c20_lo_dado_de_baja_no_se_toca"],
+    "C19": [TC + "C19Tests", TI1 + "EscriturasTests.test_c19_y_v17", TD + "AsignacionTests"],
+    "C20": [TC + "C20Tests", TI1 + "EscriturasTests.test_c20_lo_dado_de_baja_no_se_toca", TD + "CatalogoTests",
+            "catalogo/test_traslape.py::TraslapeTests"],
     "C21": [TC + "C21C22Tests", TI3 + "DispositivosFactorYAlertasTests.test_c21",
             TP + "FichaTests.test_fuera_de_alcance_es_404_igual_que_inexistente_y_queda_en_bitacora"],
     "C22": [TC + "C21C22Tests.test_c22_y_v14", TI3 + "DispositivosFactorYAlertasTests.test_c22_y_v14", TPI + "AlertasTests"],
@@ -164,7 +167,8 @@ POR_CONDICION = {
     "H2": ["autorizacion/test_hbac.py::H2Tests", "autorizacion/test_integracion_hbac.py::H2Tests"],
     "H3": ["autorizacion/test_hbac.py::H3Tests", "autorizacion/test_integracion_hbac.py::H3Tests"],
     "H4": [TC + "C1Tests.test_v2_h4_aprobada_o_periodo_cerrado_no_se_modifica_nunca",
-           TI2 + "O4Tests.test_v2_h4_una_aprobada_no_se_modifica"],
+           TI2 + "O4Tests.test_v2_h4_una_aprobada_no_se_modifica",
+           TD + "MedicionTests.test_h4_una_aprobada_no_cambia_ni_por_sql", TD + "ActoresTests"],
 }
 RLS = {
     "O1a": ["cuentas/test_rls_dominio.py::LecturaCatalogoTests", "cuentas/test_rls_dominio.py::EscrituraCatalogoTests"],

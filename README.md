@@ -9,6 +9,9 @@ responsabilidades) en Django + PostgreSQL, desplegado en Google Cloud Run con ba
 
 ## 1. Cómo correrlo en local
 
+Guía paso a paso (primera vez, cuentas de prueba, recorrido en el navegador, pruebas y cómo
+probar certificados y bitácora): [`docs/como-correr.md`](docs/como-correr.md).
+
 Requisitos: **Docker Desktop**. No hace falta instalar Python ni Postgres en la máquina
 (en Windows, App Control bloquea la DLL de `psycopg`; dentro de Docker no hay problema).
 
@@ -18,14 +21,19 @@ cp .env.example .env
 #    Completar SECRET_KEY y POSTGRES_PASSWORD con valores aleatorios, p. ej.:
 #    python -c "import secrets; print(secrets.token_urlsafe(50))"
 
-# 2. Levantar Postgres 17 + Django (python 3.12, usuario no root)
+# 2. Levantar Postgres 17, el motor de autorización y Django (python 3.12, usuario no root)
 docker compose up -d --build
 
-# 3. Crear las tablas
+# 3. Crear las tablas (incluye RLS, disparadores y el catálogo de motivos de devolución)
 docker compose exec web python manage.py migrate
 
-# 4. Abrir http://127.0.0.1:8000
+# 4. Crear las cuentas de prueba, una por rol (ver 5.1: contraseña y secreto TOTP)
+
+# 5. Abrir http://127.0.0.1:8000
 ```
+
+Sin el contenedor `autorizador` sano no se concede nada (fallo cerrado, RG5), y sin cuentas de
+prueba no hay con quién entrar: no hay registro público.
 
 Comandos útiles:
 
@@ -35,6 +43,7 @@ Comandos útiles:
 | Consola de Django | `docker compose exec web python manage.py shell` |
 | Consola SQL | `docker compose exec db psql -U verdeazul -d verdeazul` |
 | Correr pruebas | `docker compose exec web python manage.py test` |
+| Pruebas del motor (contenedor aparte) | `docker compose exec autorizador python -m unittest` |
 | Ver logs (eventos de bitácora) | `docker compose logs -f web` |
 | Apagar | `docker compose down` |
 | Borrar la base local y empezar de cero | `docker compose down -v` |
@@ -148,7 +157,9 @@ PRs automáticos, reduciendo la ventana de exposición a vulnerabilidades conoci
 
 El autorizador quedó con `roles/run.invoker` solo para `verdeazul-app`. El path `/healthz`
 de FastAPI queda sombreado por el frontend de Cloud Run; para probar el motor usar
-`POST /autorizar` (403 fail-closed) o `GET /usuarios_con_rol/VF` (200 con lista vacía).
+`POST /autorizar`, que devuelve la decisión en JSON (`resultado`, `regla`, `motivo`, `rol`,
+`roles`, `hbac`, `alertas`, `marca_agua`); una solicitud mal formada da 422. Los usuarios con
+un rol los resuelve Django leyendo la base, no el autorizador.
 
 #### Prerrequisitos (setup manual, una sola vez)
 
@@ -171,15 +182,29 @@ de FastAPI queda sombreado por el frontend de Cloud Run; para probar el motor us
 ## 2. Estructura
 
 ```
-verdeazul/        configuración (settings lee TODO de variables de entorno)
+verdeazul/        configuración (settings lee TODO de variables de entorno) y rutas
 nucleo/           piezas compartidas: errores, vocabulario de acciones, ganchos, decorador transicion
-cuentas/          Usuario (O7a) — autenticación básica
-catalogo/         Finca, Parcela, ParcelaVersion (O1a), DatosPropietario (O1b) + services.py
-mediciones/       Periodo (O2), Asignacion (O3), Medicion + MedicionActor (O4), Enmienda (O5)
-  services.py     ÚNICA vía para cambiar estados (ninguna vista hace .save() directo)
+cuentas/          O7–O9: cuentas y estados, roles con vigencia, sesiones, segundo factor, ventanas de
+                  auditoría, dispositivos de campo, restablecimientos, alertas HBAC, RLS (migraciones)
+                  y pantallas de gestión (/gestion/cuentas, roles, ventanas, ...)
+autorizacion/     motor de autorización
+  pep.py, cliente.py, listas.py, procesos.py   PEP (Django): atributos leídos de la base, listas filtradas
+  app.py, matriz.py, reglas.py, condiciones.py, hbac.py   PDP (FastAPI, contenedor aparte, sin base)
+catalogo/         O1: Finca, Parcela, ParcelaVersion (O1a), DatosPropietario (O1b)
+  services.py     única vía para cambiar el catálogo (incluye el chequeo de traslape de C20 con shapely)
+  pantallas.py    /gestion/fincas, /gestion/parcelas
+mediciones/       O2–O5: Periodo, Asignacion, Medicion + MedicionActor, Enmienda, MotivoDevolucion
+  services.py     única vía para cambiar estados (ninguna vista hace .save() directo)
   selectores.py   funciones de atributos de la matriz: actores(m), tecnicos(f,p), ...
   carbono.py      cálculo de toneladas de CO2
+  pantallas.py    /gestion/periodos, asignaciones, mediciones, enmiendas
+templates/        plantilla base y menú según los roles vigentes
+db/               SQL de roles y privilegios para Neon (app_runtime, RLS)
+docs/             tabla de cobertura de la matriz (generada con manage.py tabla_cobertura)
 ```
+
+Migraciones con SQL propio: `cuentas` (RLS de todas las tablas), `catalogo/0003` y
+`mediciones/0003` (disparadores), `mediciones/0002` (catálogo de motivos de devolución).
 
 ---
 
@@ -221,16 +246,28 @@ Se conectan en `settings.VERDEAZUL_GANCHOS` con la ruta de la función; no hay q
 | `registrar_evento` | `(*, actor, accion, recurso_tipo, recurso_id, resultado, antes, despues, detalle)` | Bitácora encadenada. Se llama dentro de la transacción. |
 | `on_medicion_aprobada` | `(medicion) -> None` | Emitir y firmar el certificado. Corre en la transacción de aprobación con la medición bloqueada; si lanza excepción, la aprobación se revierte. Si `medicion.version_de` no es `None`, tratar como versión enmendada. |
 
-Comportamiento actual: `autorizar` **niega todo** (fallo cerrado), salvo con `DEBUG=true` en
-local; `usuarios_con_rol` usa Groups de Django con el nombre del rol; los eventos se escriben en el log.
+Configuración actual: `autorizar` → `autorizacion.cliente.autorizar` (motor real, también en local;
+solo se concede lo que la matriz permite) y `usuarios_con_rol` → `cuentas.roles.usuarios_con_rol`
+(cuentas ACTIVAS con el rol vigente). `registrar_evento` y `on_medicion_aprobada` usan todavía la
+implementación provisional (escriben en el log) hasta que existan la bitácora y los certificados.
+Sin un gancho `autorizar` configurado, la implementación provisional **niega todo** (fallo cerrado).
 
 ### 3.3 Vocabulario de acciones (`nucleo/acciones.py`)
 
 `finca:crear|modificar|baja` · `parcela:crear|modificar_geometria|baja` · `propietario:crear_datos|registrar_datos` ·
 `periodo:abrir|pasar_verificacion|cerrar` · `asignacion:crear|terminar` ·
-`medicion:crear|modificar|enviar|aprobar|devolver` · `enmienda:solicitar|autorizar|rechazar`
+`medicion:crear|modificar|enviar|aprobar|devolver|sincronizar` · `enmienda:solicitar|autorizar|rechazar` ·
+`cuenta:crear|modificar|baja|activar` · `ventana:autorizar` · `rol:asignar|retirar|autorizar|rechazar` ·
+`dispositivo:registrar|revocar` · `factor:registrar|solicitar_restablecimiento|autorizar_restablecimiento|rechazar_restablecimiento` ·
+`alerta:crear|resolver`
 
-Cada constante indica en un comentario su celda de la matriz (p. ej. `MEDICION_APROBAR` → VF·O4 AP, C2).
+Además, para cada una de las 13 columnas: `<objeto>:leer` (L de un objeto), `<objeto>:listar` (L de
+una lista) y `<objeto>:exportar` (X), con `<objeto>` en `finca`, `parcela`, `propietario`, `periodo`,
+`asignacion`, `medicion`, `enmienda`, `certificado`, `cuenta`, `rol`, `dispositivo`, `factor`,
+`bitacora` y `alerta`.
+
+Cada constante indica en un comentario su celda de la matriz (p. ej. `MEDICION_APROBAR` → VF·O4 AP, C2);
+`autorizacion/matriz.py` traduce cada acción a su columna y operación.
 
 ### 3.4 Funciones de atributos (`mediciones/selectores.py`)
 
@@ -264,6 +301,22 @@ propuestos, `estado` (`SOLICITADA`/`AUTORIZADA`/`RECHAZADA`/`APLICADA`/`DESCARTA
 - Dos versiones de geometría vigentes para la misma parcela; dos asignaciones vigentes iguales.
 - Ningún borrado en cascada (`PROTECT`): las bajas son cambios de estado.
 
+Además, **disparadores** (`catalogo/0003`, `mediciones/0003`) que aplican a cualquiera que escriba,
+incluido el dueño de la base:
+
+| Tabla | Qué rechaza |
+|---|---|
+| Medición | Cualquier cambio a una APROBADA o de un período CERRADO (H4); transiciones fuera de BORRADOR → ENVIADA → APROBADA \| DEVUELTA → ENVIADA; cambiar parcela, geometría, período, autor u origen; editar datos de campo fuera de BORRADOR/DEVUELTA o en una versión enmendada; asignar verificador fuera del envío. Al aprobar o devolver, si la conexión tiene sujeto: que no sea el verificador asignado, que sea actor de la cadena, que haya sido técnico de la finca y período o que sea su propietario (C2). Al crear: original fuera de BORRADOR o de un período ABIERTO; versión de geometría de otra parcela. |
+| Historial de actores | Toda modificación o borrado (solo inserción). |
+| Período | Cambios sobre uno CERRADO, reabrirlo o saltarse EN_VERIFICACION; cerrarlo con mediciones pendientes (C13). |
+| Enmienda | Cambiar lo solicitado; transiciones fuera de su ciclo; cambiar quién la resolvió; que la resuelva otra cuenta que la conectada (C3). |
+| Asignación | Asignar a un propietario su propia finca o en un período CERRADO; cambiarla salvo terminarla, una vez (C19). |
+| Versión de geometría | Todo cambio salvo cerrar su vigencia, una vez (C20). |
+| Finca, parcela, datos del propietario | Cambiar propietario, finca o código; reactivar algo dado de baja. |
+| Todas las del dominio | Borrar filas (RG1). `TRUNCATE` lo impiden los privilegios de `app_runtime`. |
+
+Las pruebas de `mediciones/test_disparadores.py` los atacan con SQL directo como dueño de la base.
+
 ---
 
 ## 4. Decisiones de implementación y desviaciones respecto a la Parte 1
@@ -271,11 +324,15 @@ propuestos, `estado` (`SOLICITADA`/`AUTORIZADA`/`RECHAZADA`/`APLICADA`/`DESCARTA
 | # | Decisión | Por qué | Implicación de seguridad |
 |---|---|---|---|
 | D1 | **Cálculo de CO2**: ecuación pantropical de Chave et al. (2014), `AGB = 0.0673·(ρ·D²·H)^0.976` kg por árbol, ρ = 0.6 g/cm³; carbono = 47 % (IPCC 2006); CO2 = C·44/12. Árbol promedio × número de árboles. | La Parte 1 solo dice "el servidor recalcula el carbono con los datos crudos", sin fórmula. | El cliente nunca envía toneladas; el servidor las recalcula al crear, modificar y **otra vez al aprobar**. Simplificación: árbol promedio y stock en pie, no incremento. |
-| D2 | Geometría como **GeoJSON validado** (lista blanca) en vez de **PostGIS**. | PostGIS exige GDAL en la imagen. | Limitación actual: no se valida traslape entre parcelas (parte de C20). |
-| D3 | Sin PWA sin conexión ni paquetes de trabajo firmados. | La captura offline y los paquetes firmados no forman parte de la implementación. | C13 `TV` no verifica paquetes vigentes; C16 (sincronización final) queda sin flujo. Riesgo R6 no aplica al no haber captura offline. |
+| D2 | Geometría como **GeoJSON validado** (lista blanca) en vez de **PostGIS**; la validez del polígono y el **traslape** (C20) los comprueba el servicio de catálogo con la librería `shapely`. | PostGIS exige GDAL en la imagen y activar la extensión en Neon; `shapely` cierra C20 sin cambiar la base ni la infraestructura. | Se rechaza un polígono que se cruza consigo mismo o sin área, y uno cuyo interior se cruce con la versión vigente de otra parcela activa (compartir un borde está permitido). Un bloqueo de transacción (`pg_advisory_xact_lock`) serializa los cambios de geometría, así dos altas simultáneas no pasan ambas. Riesgo residual: el traslape no lo revalida la base (las versiones sí son inmutables por disparador); quien escriba SQL directo con el rol de la aplicación podría insertar una geometría traslapada. |
+| D3 | Sin PWA sin conexión ni paquetes de trabajo firmados. | La captura offline y los paquetes firmados no forman parte de la implementación. | C13 `TV` no verifica paquetes vigentes. C16 se ejerce con la sincronización final vacía que cierra la baja de un técnico (D8). Riesgo R6 no aplica al no haber captura offline. |
 | D4 | Verificador **nuevo** en cada envío. | Consecuencia de C2: quien devolvió queda en actores(m) y no puede aprobar. | Ojos frescos tras cada devolución; exige al menos 3 VF activos para un ciclo enviar→devolver→reenviar→enmendar. |
 | D5 | On-premise → Cloud Run + Neon; OpenBao → Secret Manager. | Migración a servicios gestionados. | Secretos fuera de la imagen y del repo; TLS terminado por Cloud Run; identidad de servicio vía WIF. |
 | D6 | Django corre dentro de Docker también en desarrollo; Python 3.12. | App Control de Windows bloquea `psycopg`; misma versión que producción. | Paridad desarrollo–producción. |
+| D19 | Las pantallas de O1–O5 muestran nombres de cuentas y períodos sin `JOIN`: los resuelven aparte con lo que el sujeto puede listar, y lo demás aparece como `#id`. | Bajo RLS, un `JOIN` a una fila que el sujeto no puede leer (PF no tiene O2; VF no lee la cuenta del técnico) haría desaparecer la fila entera de la lista o fallar la ficha. | Las listas coinciden con lo que el motor concede; ningún nombre de una cuenta ajena se filtra por la pantalla. Lo verifican pruebas con el rol real de la aplicación (`mediciones/test_pantallas.py::PantallasBajoRLSTests`). |
+| D20 | Las acciones que cambian datos se confirman en una página (GET) y se ejecutan con POST. | Aprobar, devolver y autorizar una enmienda exigen segundo factor de ≤ 300 s; tras el reto (RG6) el sistema vuelve a la página pedida con GET. | Nunca se ejecuta un cambio con GET (CSRF); el usuario confirma de nuevo tras reautenticarse. |
+| D21 | Catálogo de motivos de devolución cargado por migración (`mediciones/0002`) en la fase `sistema`. | C2 exige devolver con un motivo de un catálogo cerrado; la tabla tiene RLS con FORCE y solo admite escrituras de procesos del sistema. | Ninguna persona agrega motivos; al revertir, se desactivan en vez de borrarse (RG1). |
+| D22 | Disparadores de dominio (`catalogo/0003`, `mediciones/0003`) que revalidan H4, C2, C3, C13, C19, C20 y RG1. | Defensa en profundidad prometida por la arquitectura: la base revalida lo crítico aunque falle la aplicación. | Tres capas: el motor decide, el servicio revalida y la base vuelve a revalidar. Límite: C2 y C3 se comprueban contra el sujeto de la conexión, que solo existe en las peticiones web; en consola o tareas esas dos no aplican (las demás sí). |
 
 ## 5. Cuentas, autenticación y motor de autorización
 
@@ -362,24 +419,6 @@ Esto actualiza lo que dice 3.2 sobre el comportamiento actual de los ganchos:
 | Certificado | `autorizacion.procesos.datos_propietario_para_certificado(medicion)` devuelve nombre e identificación del propietario solo al VF que aprueba esa medición; el VF no tiene acceso directo a O1b. |
 | Errores en pantallas | `cuentas.errores.ErroresMiddleware` traduce las excepciones a 403 / 404 / 400 / 409. |
 | Pruebas de otros módulos | Para usar el motor real sin levantarlo: `autorizacion.test_cliente.MotorFalso`. Para aislar un servicio: quitar el gancho `autorizar` y activar `AUTORIZACION_PROVISIONAL_PERMISIVA`. |
-
-#### Cambios que afectan otras secciones del README
-
-Esta parte cambió cosas que otras secciones describen; esas secciones no se editaron:
-
-- **Sección 1, Despliegue de validación**: `GET /usuarios_con_rol/...` ya no existe (lo resuelve Django
-  leyendo la base) y `POST /autorizar` devuelve la decisión en JSON (`resultado`, `regla`, `motivo`,
-  `rol`, `roles`, `hbac`, `alertas`, `marca_agua`), no siempre 403. Una solicitud mal formada da 422.
-- **Sección 2, Estructura**: existe el paquete `autorizacion/` (PEP: `pep.py`, `cliente.py`,
-  `listas.py`, `procesos.py`; PDP: `app.py`, `matriz.py`, `reglas.py`, `condiciones.py`, `hbac.py`), y
-  `cuentas/` ya no es solo autenticación básica: estados de cuenta, roles con vigencia, sesiones,
-  segundo factor, ventanas de auditoría, dispositivos de campo, restablecimientos, alertas, RLS y
-  pantallas de gestión.
-- **Sección 3.3, Vocabulario de acciones**: ahora incluye lectura (`<objeto>:leer`), exportación
-  (`<objeto>:exportar`) y listas (`<objeto>:listar`) de las 13 columnas, y las acciones de O7–O9
-  (cuentas, roles, ventanas, dispositivos, segundo factor y alertas). La lista completa está en
-  `nucleo/acciones.py`.
-- **D3**: C16 ya tiene flujo, con la sincronización final vacía que cierra la baja de un técnico (D8).
 
 ### 5.4 Producción
 

@@ -29,7 +29,7 @@ from django.test import override_settings
 
 from autorizacion import cliente, pep, procesos
 from autorizacion.listas import listar
-from autorizacion.test_integracion_o1_o3 import POLIGONO
+from autorizacion.test_integracion_o1_o3 import poligono
 from autorizacion.test_integracion_o4_o6 import DATOS
 from autorizacion.test_integracion_o7_o9 import GANCHOS
 from autorizacion.test_listas import ListasBase
@@ -143,8 +143,8 @@ class EscrituraCatalogoTests(RLSDominioBase):
     def test_flujo_por_servicios_bajo_rls(self):
         with self.como(self.ac):
             finca = catalogo.crear_finca(self.ac, "Nueva", "Guatuso", self.pf2)
-            parcela = catalogo.crear_parcela(self.ac, self.finca, codigo="P3", area_ha="1", geometria=POLIGONO)
-            catalogo.modificar_geometria(self.ac, parcela, area_ha="1.1", geometria=POLIGONO)
+            parcela = catalogo.crear_parcela(self.ac, self.finca, codigo="P3", area_ha="1", geometria=poligono(2))
+            catalogo.modificar_geometria(self.ac, parcela, area_ha="1.1", geometria=poligono(2))
             catalogo.modificar_finca(self.ac, finca, nombre="Nueva Esperanza")
             catalogo.registrar_datos_propietario(self.ac, self.pf, nombre_completo="Otro nombre", identificacion="9-9")
             asignacion = mediciones.crear_asignacion(self.ac, self.tc2, self.finca, self.periodo)
@@ -186,7 +186,8 @@ class EscrituraCatalogoTests(RLSDominioBase):
     def test_solo_gc_cambia_periodos(self):
         for usuario in (self.tc, self.vf, self.ac):
             with self.subTest(usuario=usuario.username), self.como(usuario):
-                self.assertIsInstance(self.sql("UPDATE mediciones_periodo SET estado = 'CERRADO'"), DatabaseError)
+                # Transición válida (el disparador de C13 la deja pasar): la niega RLS.
+                self.assertIsInstance(self.sql("UPDATE mediciones_periodo SET estado = 'EN_VERIFICACION'"), DatabaseError)
         with self.como(self.gc):
             self.assertEqual(self.sql("UPDATE mediciones_periodo SET nombre = nombre"), 1)
 
@@ -274,7 +275,7 @@ class FlujoMedicionesTests(RLSMedicionesBase):
 
     def test_crear_enviar_y_devolver(self):
         with self.como(self.ac):
-            parcela = catalogo.crear_parcela(self.ac, self.finca, codigo="P4", area_ha="1", geometria=POLIGONO)
+            parcela = catalogo.crear_parcela(self.ac, self.finca, codigo="P4", area_ha="1", geometria=poligono(3))
         with self.como(self.tc):
             m = mediciones.crear_medicion(self.tc, parcela, self.periodo, **DATOS)
             m = mediciones.modificar_medicion(self.tc, m, numero_arboles=140)
@@ -288,19 +289,26 @@ class FlujoMedicionesTests(RLSMedicionesBase):
 
 class EscrituraMedicionesTests(RLSMedicionesBase):
     def test_solo_autor_verificador_o_gc_en_su_papel(self):
-        m = str(self.medicion.pk)
-        with self.como(self.tc2):
-            self.assertEqual(self.sql("UPDATE mediciones_medicion SET observaciones = 'x' WHERE id = %s", [m]), 0)
-        with self.como(self.vf2):
-            self.assertEqual(self.sql("UPDATE mediciones_medicion SET observaciones = 'x' WHERE id = %s", [m]), 0)
-        with self.como(self.pf):
-            self.assertIsInstance(self.sql("UPDATE mediciones_medicion SET observaciones = 'x' WHERE id = %s", [m]),
-                                  DatabaseError)
+        # RLS, sobre una medición en BORRADOR (medicion2, de tc2): los disparadores dejan editarla,
+        # así que quien la rechaza es RLS.
+        m2 = str(self.medicion2.pk)
+        cambio = "UPDATE mediciones_medicion SET observaciones = 'x' WHERE id = %s"
+        for ajeno in (self.tc, self.vf2):
+            with self.subTest(usuario=ajeno.username), self.como(ajeno):
+                self.assertEqual(self.sql(cambio, [m2]), 0)
         with self.como(self.gc):
-            self.assertIsInstance(self.sql("UPDATE mediciones_medicion SET observaciones = 'x' WHERE id = %s", [m]),
-                                  DatabaseError)
-        with self.como(self.vf):                                                # su verificador sí
-            self.assertEqual(self.sql("UPDATE mediciones_medicion SET observaciones = 'x' WHERE id = %s", [m]), 1)
+            self.assertIsInstance(self.sql(cambio, [m2]), DatabaseError)
+        # PF no lee períodos (sin O2): el disparador de H4 no puede comprobarlo y niega
+        # antes que RLS (fallo cerrado). Lo que importa es que se rechaza.
+        with self.como(self.pf2), self.assertRaises(DatabaseError):
+            with transaction.atomic(), connection.cursor() as c:
+                c.execute(cambio, [m2])
+        with self.como(self.tc2):                                               # su autor sí
+            self.assertEqual(self.sql(cambio, [m2]), 1)
+        # H4 en la base: una medición APROBADA no la modifica nadie, ni su verificador.
+        with self.como(self.vf), self.assertRaisesRegex(DatabaseError, "H4"):
+            with transaction.atomic(), connection.cursor() as c:
+                c.execute(cambio, [str(self.medicion.pk)])
 
     def test_altas_a_nombre_propio(self):
         m = str(self.medicion.pk)
@@ -317,7 +325,7 @@ class EscrituraMedicionesTests(RLSMedicionesBase):
                 "INSERT INTO mediciones_medicion (id, parcela_id, parcela_version_id, periodo_id, autor_id, estado, "
                 "numero_arboles, dap_promedio_cm, altura_promedio_m, observaciones, toneladas_co2, creada_en, "
                 "comentario_devolucion) "
-                "SELECT gen_random_uuid(), parcela_id, parcela_version_id, periodo_id, autor_id, 'ENVIADA', "
+                "SELECT gen_random_uuid(), parcela_id, parcela_version_id, periodo_id, autor_id, 'BORRADOR', "
                 "numero_arboles, dap_promedio_cm, altura_promedio_m, '', toneladas_co2, now(), '' "
                 "FROM mediciones_medicion WHERE id = %s", [m]), DatabaseError)
         with self.como(self.vf):
