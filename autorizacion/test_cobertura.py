@@ -21,12 +21,9 @@ VENTANA_AE = {"estado": "APROBADA", "inicio": "2026-11-01", "fin": "2026-11-20",
               "aprobada_por_gc": True, "aprobada_por_distinto": True}
 
 
-# Operaciones de la matriz que hoy no tienen una acción propia en el código.
-SIN_ACCION_PROPIA = {
-    # catalogo.services.registrar_datos_propietario crea o actualiza (update_or_create) y siempre se
-    # autoriza como propietario:registrar_datos (MO, C20): el alta de O1b no se distingue del cambio.
-    ("AC", "O1b", "CR"),
-}
+# Operaciones de la matriz que hoy no tienen una acción propia en el código (ninguna:
+# AC·O1b CR se cerró con propietario:crear_datos).
+SIN_ACCION_PROPIA: set[tuple[str, str, str]] = set()
 
 
 def acciones_de(objeto: str, operacion: str) -> list[str]:

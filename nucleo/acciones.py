@@ -18,7 +18,8 @@ class Accion:
     PARCELA_BAJA = "parcela:baja"                # AC·O1a BA
 
     # O1b · Datos personales del propietario
-    PROPIETARIO_REGISTRAR_DATOS = "propietario:registrar_datos"  # AC·O1b CR/MO
+    PROPIETARIO_CREAR_DATOS = "propietario:crear_datos"          # AC·O1b CR (C20): primera vez
+    PROPIETARIO_REGISTRAR_DATOS = "propietario:registrar_datos"  # AC·O1b MO (C20): cambio de datos existentes
 
     # O2 · Períodos
     PERIODO_ABRIR = "periodo:abrir"              # GC·O2 AB (C13)

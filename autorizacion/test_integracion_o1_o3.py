@@ -174,3 +174,21 @@ class ConMotorRealTests(EscenarioBase):
             catalogo.dar_baja_finca(self.ac, self.finca)
             with self.assertRaises(AccesoDenegado):
                 catalogo.modificar_finca(self.ac, self.finca, nombre="Otra")
+
+    def test_c20_o1b_ac_crea_y_luego_modifica_datos_del_propietario(self):
+        """AC·O1b: la primera vez se autoriza como CR y las siguientes como MO; GC y TC no tienen O1b."""
+        from nucleo import ganchos
+
+        with self.motor(), MotorFalso().instalar(), \
+                mock.patch("nucleo.ganchos.autorizar", wraps=ganchos.autorizar) as espia:
+            for intruso in (self.gc, self.tc):  # GC·O1b y TC·O1b: "—" (RG1)
+                with self.subTest(rol=intruso.username), self.assertRaises(AccesoDenegado):
+                    catalogo.registrar_datos_propietario(intruso, self.pf, nombre_completo="X", identificacion="0-0")
+            datos = catalogo.registrar_datos_propietario(self.ac, self.pf, nombre_completo="Patricia Fallas",
+                                                         identificacion="1-1111-1111")
+            self.assertEqual(espia.call_args.args[1], Accion.PROPIETARIO_CREAR_DATOS)
+            catalogo.registrar_datos_propietario(self.ac, self.pf, nombre_completo="Patricia Fallas Mora",
+                                                 identificacion="1-1111-1111")
+            self.assertEqual(espia.call_args.args[1], Accion.PROPIETARIO_REGISTRAR_DATOS)
+        datos.refresh_from_db()
+        self.assertEqual(datos.nombre_completo, "Patricia Fallas Mora")

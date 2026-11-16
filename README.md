@@ -226,7 +226,7 @@ local; `usuarios_con_rol` usa Groups de Django con el nombre del rol; los evento
 
 ### 3.3 Vocabulario de acciones (`nucleo/acciones.py`)
 
-`finca:crear|modificar|baja` · `parcela:crear|modificar_geometria|baja` · `propietario:registrar_datos` ·
+`finca:crear|modificar|baja` · `parcela:crear|modificar_geometria|baja` · `propietario:crear_datos|registrar_datos` ·
 `periodo:abrir|pasar_verificacion|cerrar` · `asignacion:crear|terminar` ·
 `medicion:crear|modificar|enviar|aprobar|devolver` · `enmienda:solicitar|autorizar|rechazar`
 
@@ -277,7 +277,7 @@ propuestos, `estado` (`SOLICITADA`/`AUTORIZADA`/`RECHAZADA`/`APLICADA`/`DESCARTA
 | D5 | On-premise → Cloud Run + Neon; OpenBao → Secret Manager. | Migración a servicios gestionados. | Secretos fuera de la imagen y del repo; TLS terminado por Cloud Run; identidad de servicio vía WIF. |
 | D6 | Django corre dentro de Docker también en desarrollo; Python 3.12. | App Control de Windows bloquea `psycopg`; misma versión que producción. | Paridad desarrollo–producción. |
 
-## 5. Cuentas, autenticación y motor de autorización (Persona 3)
+## 5. Cuentas, autenticación y motor de autorización
 
 Esta parte implementa la matriz de control de acceso completa (78 celdas, C1–C22, H1–H4),
 las cuentas y sus roles, el ingreso con segundo factor y Row Level Security en todas las tablas.
@@ -348,7 +348,7 @@ público: AC crea la cuenta y entrega un enlace de activación de un solo uso po
   `CONCEDE` → nada · `NIEGA` → `AccesoDenegado` (403) · `FUERA_DE_ALCANCE` → `FueraDeAlcance` (404) ·
   `REAUTENTICAR` → `ReautenticacionRequerida` (reto de segundo factor). Cualquier otra cosa niega.
 
-### 5.3 Para el resto del equipo
+### 5.3 Uso desde otros módulos
 
 Esto actualiza lo que dice 3.2 sobre el comportamiento actual de los ganchos:
 
@@ -359,7 +359,7 @@ Esto actualiza lo que dice 3.2 sobre el comportamiento actual de los ganchos:
 | Listas | `autorizacion.listas.listar(usuario, "fincas")` devuelve un QuerySet ya filtrado al alcance del sujeto (fincas, parcelas, propietarios, periodos, asignaciones, mediciones, enmiendas, cuentas, sesiones, ventanas, roles, solicitudes_rol, dispositivos, restablecimientos, alertas). |
 | Lectura de un objeto | `ganchos.autorizar(usuario, "finca:leer", finca)`; fuera de alcance da `FueraDeAlcance` (404). |
 | Exportaciones | Pasar `{"registros": N}` en el contexto de `autorizar(..., "<objeto>:exportar", ...)` (si falta, se niega) y poner en el archivo `cuentas.hbac.marca_de_agua(usuario)`. |
-| Certificado (Persona 4) | `autorizacion.procesos.datos_propietario_para_certificado(medicion)` devuelve nombre e identificación del propietario solo al VF que aprueba esa medición; el VF no tiene acceso directo a O1b. |
+| Certificado | `autorizacion.procesos.datos_propietario_para_certificado(medicion)` devuelve nombre e identificación del propietario solo al VF que aprueba esa medición; el VF no tiene acceso directo a O1b. |
 | Errores en pantallas | `cuentas.errores.ErroresMiddleware` traduce las excepciones a 403 / 404 / 400 / 409. |
 | Pruebas de otros módulos | Para usar el motor real sin levantarlo: `autorizacion.test_cliente.MotorFalso`. Para aislar un servicio: quitar el gancho `autorizar` y activar `AUTORIZACION_PROVISIONAL_PERMISIVA`. |
 
@@ -379,7 +379,7 @@ Esta parte cambió cosas que otras secciones describen; esas secciones no se edi
   (`<objeto>:exportar`) y listas (`<objeto>:listar`) de las 13 columnas, y las acciones de O7–O9
   (cuentas, roles, ventanas, dispositivos, segundo factor y alertas). La lista completa está en
   `nucleo/acciones.py`.
-- **D3**: C16 ya tiene flujo, con la sincronización final vacía que cierra la baja de un técnico (P3-2).
+- **D3**: C16 ya tiene flujo, con la sincronización final vacía que cierra la baja de un técnico (D8).
 
 ### 5.4 Producción
 
@@ -419,19 +419,19 @@ C19); el alcance exacto lo aplica el PEP. El comentario de verificación de `db/
 tablas con RLS) quedó desactualizado: `cuentas/test_rls_django.py::MetadatosTests.test_estado_de_rls_por_tabla`
 describe el estado real.
 
-### 5.6 Decisiones de esta parte
+### 5.6 Decisiones de implementación (cuentas y autorización)
 
 | # | Decisión | Por qué |
 |---|---|---|
-| P3-1 | Corrección 3: GC lee O7d acotado por C17 (solo restablecimientos que puede resolver, solo metadatos). | Sin L, el GC no veía lo que debía autorizar; en O5, O7a y O7b ya lee lo que autoriza. |
-| P3-2 | C16: el GC puede cerrar la baja de un técnico con una sincronización final vacía, que revoca sus dispositivos y deja la cuenta INACTIVA. | Sin PWA sin conexión (D3) no hay registros que sincronizar; el GC queda como actor en la bitácora. |
-| P3-3 | H1: n(s) incluye la petición; μ(s) usa el historial propio solo con 90 días (si no, la media del rol que concede; sin historial, 0) y no cuenta la última hora; tras resolver una H1, n(s) cuenta desde la resolución. La suspensión es de la persona (también como PF). | Umbral `max(3·μ, 25)` sin que la propia ráfaga lo suba ni lo bloquee de nuevo al resolver. |
-| P3-4 | Una lista cuenta como una lectura para H1, y el motor decide la lista con las condiciones del sujeto; las de alcance se aplican como filtro y una prueba compara la lista con la lectura objeto por objeto. | Listas eficientes sin perder la decisión del motor. |
-| P3-5 | Las alertas que provoca una negación (H1) se crean al terminar la petición, fuera de la transacción revertida. | Si no, el rollback las borraba. |
-| P3-6 | AC·O1b CR no tiene acción propia: el alta y el cambio de datos personales van por `propietario:registrar_datos` (MO, C20). | Así lo implementa el servicio de catálogo; está anotado en la tabla de cobertura. |
-| P3-7 | C19 MO (terminar una asignación) no exige que el técnico siga siendo TC. | Para poder terminar la asignación de quien perdió el rol. |
-| P3-8 | C13 CI: una versión enmendada DEVUELTA no bloquea el cierre del período. | Igual que `mediciones.services.cerrar_periodo`; la original ya está aprobada. |
-| P3-9 | C11: se enmienda la versión aprobada más reciente de la cadena. | Igual que `mediciones.services`. |
-| P3-10 | El motivo de devolución (C2) y la justificación (C11) los valida el servicio, no el motor. | Vienen en la petición y no en la base; el motor no recibe textos libres, solo si la justificación está presente. |
-| P3-11 | Una sola ventana de auditoría por cuenta AE; al vencer, la tarea diaria deja la cuenta INACTIVA, termina su rol AE y cierra sus sesiones. | Una cuenta AE nominal por auditoría; un AE nunca tiene registros de campo pendientes, así que no pasa por EN_BAJA. |
-| P3-12 | RLS: cada `WITH CHECK` repite su condición completa (migración 0019), y las lecturas dentro de funciones `SECURITY DEFINER` usan una fase interna para que una política no se llame a sí misma (0023). | PostgreSQL combina las políticas permisivas de UPDATE (el `USING` de una con el `WITH CHECK` de otra), lo que permitía, por ejemplo, reactivar una cuenta EN_BAJA; y sin la fase interna la recursión dependía del orden de evaluación. |
+| D7 | Corrección 3: GC lee O7d acotado por C17 (solo restablecimientos que puede resolver, solo metadatos). | Sin L, el GC no veía lo que debía autorizar; en O5, O7a y O7b ya lee lo que autoriza. |
+| D8 | C16: el GC puede cerrar la baja de un técnico con una sincronización final vacía, que revoca sus dispositivos y deja la cuenta INACTIVA. | Sin PWA sin conexión (D3) no hay registros que sincronizar; el GC queda como actor en la bitácora. |
+| D9 | H1: n(s) incluye la petición; μ(s) usa el historial propio solo con 90 días (si no, la media del rol que concede; sin historial, 0) y no cuenta la última hora; tras resolver una H1, n(s) cuenta desde la resolución. La suspensión es de la persona (también como PF). | Umbral `max(3·μ, 25)` sin que la propia ráfaga lo suba ni lo bloquee de nuevo al resolver. |
+| D10 | Una lista cuenta como una lectura para H1, y el motor decide la lista con las condiciones del sujeto; las de alcance se aplican como filtro y una prueba compara la lista con la lectura objeto por objeto. | Listas eficientes sin perder la decisión del motor. |
+| D11 | Las alertas que provoca una negación (H1) se crean al terminar la petición, fuera de la transacción revertida. | Si no, el rollback las borraba. |
+| D12 | AC·O1b: el alta de los datos personales del propietario se autoriza como `propietario:crear_datos` (CR, C20) y el cambio como `propietario:registrar_datos` (MO, C20). | Cada operación de la celda se ejerce con su propia acción, así la tabla de cobertura no tiene excepciones. |
+| D13 | C19 MO (terminar una asignación) no exige que el técnico siga siendo TC. | Para poder terminar la asignación de quien perdió el rol. |
+| D14 | C13 CI: una versión enmendada DEVUELTA no bloquea el cierre del período. | Igual que `mediciones.services.cerrar_periodo`; la original ya está aprobada. |
+| D15 | C11: se enmienda la versión aprobada más reciente de la cadena. | Igual que `mediciones.services`. |
+| D16 | El motivo de devolución (C2) y la justificación (C11) los valida el servicio, no el motor. | Vienen en la petición y no en la base; el motor no recibe textos libres, solo si la justificación está presente. |
+| D17 | Una sola ventana de auditoría por cuenta AE; al vencer, la tarea diaria deja la cuenta INACTIVA, termina su rol AE y cierra sus sesiones. | Una cuenta AE nominal por auditoría; un AE nunca tiene registros de campo pendientes, así que no pasa por EN_BAJA. |
+| D18 | RLS: cada `WITH CHECK` repite su condición completa (migración 0019), y las lecturas dentro de funciones `SECURITY DEFINER` usan una fase interna para que una política no se llame a sí misma (0023). | PostgreSQL combina las políticas permisivas de UPDATE (el `USING` de una con el `WITH CHECK` de otra), lo que permitía, por ejemplo, reactivar una cuenta EN_BAJA; y sin la fase interna la recursión dependía del orden de evaluación. |

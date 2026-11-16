@@ -111,26 +111,60 @@ def dar_baja_finca(usuario, finca) -> Finca:
     return finca
 
 
-@transicion(Accion.PROPIETARIO_REGISTRAR_DATOS, "datospropietario")
 def registrar_datos_propietario(usuario, propietario, *, nombre_completo: str, identificacion: str,
                                 telefono: str = "", correo: str = "") -> DatosPropietario:
-    ganchos.autorizar(usuario, Accion.PROPIETARIO_REGISTRAR_DATOS, None, {"propietario": propietario})
+    """
+    AC·O1b. La primera vez CREA los datos (CR, propietario:crear_datos); si ya
+    existen, los MODIFICA (MO, propietario:registrar_datos). Cada camino se
+    autoriza con su propia celda de la matriz.
+    """
+    campos = {"nombre_completo": nombre_completo, "identificacion": identificacion,
+              "telefono": telefono, "correo": correo}
+    if DatosPropietario.objects.filter(usuario_id=propietario.pk).exists():
+        return _modificar_datos_propietario(usuario, propietario, **campos)
+    return _crear_datos_propietario(usuario, propietario, **campos)
+
+
+def _valores_propietario(propietario, nombre_completo, identificacion, telefono, correo) -> dict:
     if not ganchos.usuarios_con_rol("PF").filter(pk=propietario.pk).exists():
         raise DatoInvalido("Solo se registran datos de propietarios del catálogo (C20).")
-    valores = {
+    return {
         "nombre_completo": _texto(nombre_completo, "nombre_completo", 200),
         "identificacion": _texto(identificacion, "identificacion", 30),
         "telefono": _texto(telefono, "telefono", 30, requerido=False),
         "correo": _texto(correo, "correo", 254, requerido=False),
     }
+
+
+@transicion(Accion.PROPIETARIO_CREAR_DATOS, "datospropietario")
+def _crear_datos_propietario(usuario, propietario, **campos) -> DatosPropietario:
+    ganchos.autorizar(usuario, Accion.PROPIETARIO_CREAR_DATOS, None, {"propietario": propietario})
+    valores = _valores_propietario(propietario, **campos)
     try:
         with transaction.atomic():
-            datos, creado = DatosPropietario.objects.update_or_create(usuario=propietario, defaults=valores)
+            datos = DatosPropietario.objects.create(usuario=propietario, **valores)
+    except IntegrityError:
+        # Otra persona los creó al mismo tiempo, o la identificación ya es de otro propietario.
+        raise DatoInvalido("Los datos ya existen o esa identificación ya está registrada.")
+    # Sin datos personales en la bitácora (Ley 8968): solo qué cambió, no el valor.
+    _evento(usuario, Accion.PROPIETARIO_CREAR_DATOS, datos, despues={"campos": sorted(valores)})
+    return datos
+
+
+@transicion(Accion.PROPIETARIO_REGISTRAR_DATOS, "datospropietario")
+def _modificar_datos_propietario(usuario, propietario, **campos) -> DatosPropietario:
+    ganchos.autorizar(usuario, Accion.PROPIETARIO_REGISTRAR_DATOS, None, {"propietario": propietario})
+    valores = _valores_propietario(propietario, **campos)
+    datos = DatosPropietario.objects.select_for_update().get(usuario_id=propietario.pk)
+    cambiados = sorted(c for c, v in valores.items() if getattr(datos, c) != v)
+    for campo, valor in valores.items():
+        setattr(datos, campo, valor)
+    try:
+        with transaction.atomic():
+            datos.save()
     except IntegrityError:
         raise DatoInvalido("Esa identificación ya está registrada para otra persona.")
-    # Sin datos personales en la bitácora (Ley 8968): solo qué cambió, no el valor.
-    _evento(usuario, Accion.PROPIETARIO_REGISTRAR_DATOS, datos,
-            despues={"creado": creado, "campos": sorted(valores)})
+    _evento(usuario, Accion.PROPIETARIO_REGISTRAR_DATOS, datos, despues={"campos": cambiados})
     return datos
 
 

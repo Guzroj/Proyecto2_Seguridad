@@ -160,7 +160,7 @@ ACCIONES: dict[str, tuple[str, str]] = {
     # O1a / O1b
     "finca:crear": (O1A, "CR"), "finca:modificar": (O1A, "MO"), "finca:baja": (O1A, "BA"),
     "parcela:crear": (O1A, "CR"), "parcela:modificar_geometria": (O1A, "MO"), "parcela:baja": (O1A, "BA"),
-    "propietario:registrar_datos": (O1B, "MO"),
+    "propietario:crear_datos": (O1B, "CR"), "propietario:registrar_datos": (O1B, "MO"),
     # O2
     "periodo:abrir": (O2, "AB"), "periodo:pasar_verificacion": (O2, "TV"), "periodo:cerrar": (O2, "CI"),
     # O3
