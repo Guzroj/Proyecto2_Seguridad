@@ -1,33 +1,3 @@
-"""
-Cliente HTTP del motor de autorización: implementación real del gancho
-nucleo.ganchos.autorizar (se activa en settings.VERDEAZUL_GANCHOS).
-
-Django (PEP) arma los atributos con autorizacion.pep, los manda al servicio
-autorizador (PDP, sin acceso a la base) y traduce su decisión a las excepciones
-de nucleo.errores:
-
-    CONCEDE           -> no lanza nada
-    NIEGA             -> AccesoDenegado (403)
-    FUERA_DE_ALCANCE  -> FueraDeAlcance (404, RG3)
-    REAUTENTICAR      -> ReautenticacionRequerida (reto de segundo factor, RG6)
-
-Regla de oro (RG5): cualquier otra cosa (URL sin configurar, motor caído,
-timeout, respuesta rara) es NIEGA. Solo se concede con un 200 cuyo resultado es
-exactamente "CONCEDE".
-
-Autenticación hacia el motor (AUTORIZADOR_AUTENTICACION):
-  - "oidc" (por defecto): token de identidad del metadata server de Cloud Run,
-    con la URL del motor como audiencia.
-  - "ninguna": solo en desarrollo (DEBUG); con DEBUG apagado se niega todo.
-
-Después de cada decisión, cuentas.hbac anota la actividad concedida (contadores
-de H1 y H3) y crea las alertas que pidió el motor (H1–H3). Si no puede anotar
-una concesión, se niega.
-
-usuarios_con_rol ya no pasa por el motor: lo resuelve Django leyendo la base
-(cuentas.roles.usuarios_con_rol), porque el motor no tiene acceso a ella.
-"""
-
 import logging
 import os
 

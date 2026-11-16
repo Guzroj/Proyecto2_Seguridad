@@ -1,23 +1,3 @@
-"""
-Motor de autorización (PDP) como servicio HTTP.
-
-Django es el PEP: lee los atributos de la base en cada petición y pregunta aquí
-(autorizacion.cliente). Este servicio no tiene acceso a la base (frontera F3):
-decide solo con la matriz como datos (autorizacion.matriz) y las reglas
-(autorizacion.reglas).
-
-Autenticación entre servicios: en Cloud Run el servicio se despliega con
---no-allow-unauthenticated y la plataforma rechaza cualquier petición sin un
-token OIDC válido para su URL.
-
-Contrato:
-  POST /autorizar  ->  200 {"resultado": "CONCEDE" | "NIEGA" | "FUERA_DE_ALCANCE"
-                            | "REAUTENTICAR", "regla", "motivo", "rol", "hbac",
-                            "alertas", "marca_agua"}
-  Una solicitud mal formada responde 422 y el PEP la trata como negación
-  (fallo cerrado). Nunca se concede por omisión.
-"""
-
 from typing import Any
 
 from fastapi import FastAPI
