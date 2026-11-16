@@ -248,7 +248,10 @@ class LecturaMedicionesTests(RLSMedicionesBase):
             with self.subTest(modelo=modelo.__name__):
                 self.assertEqual(self.visibles(modelo), set())
                 self.assertEqual(self.visibles(modelo, self.gc, fase=FASE_PREINGRESO), set())
-        self.assertEqual(self.visibles(MotivoDevolucion, self.vf), {self.motivo.pk})
+        # Un autenticado ve el catálogo completo (los motivos de la migración 0002 más el de la prueba).
+        catalogo = set(MotivoDevolucion.objects.values_list("pk", flat=True))
+        self.assertIn(self.motivo.pk, catalogo)
+        self.assertEqual(self.visibles(MotivoDevolucion, self.vf), catalogo)
 
 
 class FlujoMedicionesTests(RLSMedicionesBase):

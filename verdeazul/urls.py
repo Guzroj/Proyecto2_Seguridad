@@ -18,5 +18,7 @@ urlpatterns = [
     path("cuentas/activar/<uidb64>/<token>/", cuentas_views.ActivarCuentaView.as_view(), name="cuenta_activar"),
     path("cuentas/", include("allauth.urls")),
     path("gestion/", include("cuentas.urls")),
+    path("gestion/", include("catalogo.urls")),
+    path("gestion/", include("mediciones.urls")),
     path("admin/", admin.site.urls),
 ]

@@ -1,0 +1,27 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Asignaciones{% endblock %}
+{% block content %}
+  <h1>Asignaciones técnico–finca–período</h1>
+  {% if es_ac %}<p><a href="{% url 'mediciones_asignacion_nueva' %}">Nueva asignación</a></p>{% endif %}
+  <table>
+    <thead><tr><th>Técnico</th><th>Finca</th><th>Período</th><th>Desde</th><th>Hasta</th>{% if es_ac %}<th>Acciones</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for fila in filas %}
+        <tr>
+          <td>{{ fila.tecnico }}</td>
+          <td>{{ fila.finca }}</td>
+          <td>{{ fila.periodo }}</td>
+          <td>{{ fila.a.vigente_desde|date:"d/m/Y H:i" }}</td>
+          <td>{% if fila.a.vigente_hasta %}{{ fila.a.vigente_hasta|date:"d/m/Y H:i" }}{% else %}vigente{% endif %}</td>
+          {% if es_ac %}
+            <td>{% if not fila.a.vigente_hasta %}<a href="{% url 'mediciones_asignacion_terminar' fila.a.pk %}">Terminar</a>{% endif %}</td>
+          {% endif %}
+        </tr>
+      {% empty %}
+        <tr><td colspan="6">No hay asignaciones para mostrar.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p>Terminar una asignación no la borra: el historial sigue contando para que nadie verifique una finca
+     en la que midió (C2).</p>
+{% endblock %}

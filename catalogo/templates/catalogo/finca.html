@@ -1,0 +1,47 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Finca {{ finca.nombre }}{% endblock %}
+{% block content %}
+  <h1>Finca {{ finca.nombre }}</h1>
+  <p><a href="{% url 'catalogo_fincas' %}">← Fincas</a></p>
+  <dl>
+    <dt>Ubicación</dt><dd>{{ finca.ubicacion }}</dd>
+    <dt>Estado</dt><dd>{{ finca.estado }}</dd>
+    <dt>Creada</dt><dd>{{ finca.creada_en|date:"d/m/Y H:i" }}</dd>
+  </dl>
+
+  {% if datos %}
+    <h2>Propietario</h2>
+    <dl>
+      <dt>Nombre</dt><dd>{{ datos.nombre_completo }}</dd>
+      <dt>Identificación</dt><dd>{{ datos.identificacion }}</dd>
+      {% if datos.telefono %}<dt>Teléfono</dt><dd>{{ datos.telefono }}</dd>{% endif %}
+      {% if datos.correo %}<dt>Correo</dt><dd>{{ datos.correo }}</dd>{% endif %}
+    </dl>
+  {% endif %}
+
+  {% if gestiona %}
+    <h2>Acciones</h2>
+    <ul>
+      <li><a href="{% url 'catalogo_finca_modificar' finca.pk %}">Modificar finca</a></li>
+      <li><a href="{% url 'catalogo_parcela_nueva' finca.pk %}">Nueva parcela</a></li>
+      <li><a href="{% url 'catalogo_propietario_datos' finca.pk %}">{% if datos %}Modificar{% else %}Registrar{% endif %} datos del propietario</a></li>
+      <li><a href="{% url 'catalogo_finca_baja' finca.pk %}">Dar de baja la finca</a></li>
+    </ul>
+  {% endif %}
+
+  <h2>Parcelas</h2>
+  <table>
+    <thead><tr><th>Código</th><th>Estado</th><th>Área vigente (ha)</th></tr></thead>
+    <tbody>
+      {% for p in parcelas %}
+        <tr>
+          <td><a href="{% url 'catalogo_parcela' p.pk %}">{{ p.codigo }}</a></td>
+          <td>{{ p.estado }}</td>
+          <td>{{ p.version_vigente.area_ha|default:"—" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="3">La finca no tiene parcelas.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

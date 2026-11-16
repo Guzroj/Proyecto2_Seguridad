@@ -1,0 +1,35 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Parcela {{ parcela.codigo }}{% endblock %}
+{% block content %}
+  <h1>Parcela {{ parcela.codigo }}</h1>
+  <p><a href="{% url 'catalogo_finca' parcela.finca_id %}">← Finca {{ parcela.finca.nombre }}</a></p>
+  <dl>
+    <dt>Estado</dt><dd>{{ parcela.estado }}</dd>
+  </dl>
+
+  {% if gestiona %}
+    <h2>Acciones</h2>
+    <ul>
+      <li><a href="{% url 'catalogo_parcela_geometria' parcela.pk %}">Nueva versión de la geometría</a></li>
+      <li><a href="{% url 'catalogo_parcela_baja' parcela.pk %}">Dar de baja la parcela</a></li>
+    </ul>
+  {% endif %}
+
+  <h2>Versiones de la geometría</h2>
+  <p>Modificar la geometría crea una versión nueva; las anteriores no cambian y las mediciones y
+     certificados conservan la versión que usaron (C20).</p>
+  <table>
+    <thead><tr><th>Versión</th><th>Área (ha)</th><th>Vigente desde</th><th>Vigente hasta</th><th>Geometría</th></tr></thead>
+    <tbody>
+      {% for v in versiones %}
+        <tr>
+          <td>{{ v.numero }}{% if not v.vigente_hasta %} (vigente){% endif %}</td>
+          <td>{{ v.area_ha }}</td>
+          <td>{{ v.vigente_desde|date:"d/m/Y H:i" }}</td>
+          <td>{{ v.vigente_hasta|date:"d/m/Y H:i"|default:"—" }}</td>
+          <td><code>{{ v.geometria }}</code></td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

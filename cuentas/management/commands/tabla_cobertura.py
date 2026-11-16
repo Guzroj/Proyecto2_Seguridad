@@ -29,25 +29,49 @@ NOMBRES_OBJETO = {
 # ---------------------------------------------------------------------------
 # Dónde se aplica cada acción del lado Django (PEP): servicio o pantalla que llama al motor.
 # ---------------------------------------------------------------------------
-P = "cuentas/pantallas.py:"
+P, PC, PM = "cuentas/pantallas.py:", "catalogo/pantallas.py:", "mediciones/pantallas.py:"
 S_CAT, S_MED, S_CTA = "catalogo/services.py:", "mediciones/services.py:", "cuentas/services.py:"
 LISTAS = "autorizacion/listas.py:listar"
 
 DONDE = {
-    "finca:crear": [S_CAT + "crear_finca"], "finca:modificar": [S_CAT + "modificar_finca"],
-    "finca:baja": [S_CAT + "dar_baja_finca"], "parcela:crear": [S_CAT + "crear_parcela"],
-    "parcela:modificar_geometria": [S_CAT + "modificar_geometria"], "parcela:baja": [S_CAT + "dar_baja_parcela"],
-    "propietario:crear_datos": [S_CAT + "registrar_datos_propietario"],
-    "propietario:registrar_datos": [S_CAT + "registrar_datos_propietario"],
-    "periodo:abrir": [S_MED + "abrir_periodo"], "periodo:pasar_verificacion": [S_MED + "pasar_a_verificacion"],
-    "periodo:cerrar": [S_MED + "cerrar_periodo"],
-    "asignacion:crear": [S_MED + "crear_asignacion"], "asignacion:terminar": [S_MED + "terminar_asignacion"],
-    "medicion:crear": [S_MED + "crear_medicion"], "medicion:modificar": [S_MED + "modificar_medicion"],
-    "medicion:enviar": [S_MED + "enviar_medicion"], "medicion:aprobar": [S_MED + "aprobar_medicion"],
-    "medicion:devolver": [S_MED + "devolver_medicion"],
+    "finca:crear": [S_CAT + "crear_finca", PC + "finca_nueva"],
+    "finca:modificar": [S_CAT + "modificar_finca", PC + "finca_modificar"],
+    "finca:baja": [S_CAT + "dar_baja_finca", PC + "finca_baja"],
+    "parcela:crear": [S_CAT + "crear_parcela", PC + "parcela_nueva"],
+    "parcela:modificar_geometria": [S_CAT + "modificar_geometria", PC + "parcela_geometria"],
+    "parcela:baja": [S_CAT + "dar_baja_parcela", PC + "parcela_baja"],
+    "propietario:crear_datos": [S_CAT + "registrar_datos_propietario", PC + "propietario_datos"],
+    "propietario:registrar_datos": [S_CAT + "registrar_datos_propietario", PC + "propietario_datos"],
+    "periodo:abrir": [S_MED + "abrir_periodo", PM + "periodo_abrir"],
+    "periodo:pasar_verificacion": [S_MED + "pasar_a_verificacion", PM + "periodo_pasar"],
+    "periodo:cerrar": [S_MED + "cerrar_periodo", PM + "periodo_cerrar"],
+    "asignacion:crear": [S_MED + "crear_asignacion", PM + "asignacion_nueva"],
+    "asignacion:terminar": [S_MED + "terminar_asignacion", PM + "asignacion_terminar"],
+    "medicion:crear": [S_MED + "crear_medicion", PM + "medicion_nueva"],
+    "medicion:modificar": [S_MED + "modificar_medicion", PM + "medicion_modificar"],
+    "medicion:enviar": [S_MED + "enviar_medicion", PM + "medicion_enviar"],
+    "medicion:aprobar": [S_MED + "aprobar_medicion", PM + "medicion_aprobar"],
+    "medicion:devolver": [S_MED + "devolver_medicion", PM + "medicion_devolver"],
     "medicion:sincronizar": [S_CTA + "cerrar_baja_tecnico", P + "cuenta_cerrar_baja"],
-    "enmienda:solicitar": [S_MED + "solicitar_enmienda"], "enmienda:autorizar": [S_MED + "autorizar_enmienda"],
-    "enmienda:rechazar": [S_MED + "rechazar_enmienda"],
+    "enmienda:solicitar": [S_MED + "solicitar_enmienda", PM + "enmienda_solicitar"],
+    "enmienda:autorizar": [S_MED + "autorizar_enmienda", PM + "enmienda_autorizar"],
+    "enmienda:rechazar": [S_MED + "rechazar_enmienda", PM + "enmienda_rechazar"],
+    # Lecturas y listas de O1–O5 desde las pantallas del flujo de negocio
+    "finca:leer": [PC + "finca", PC + "finca_modificar", PC + "finca_baja", PC + "propietario_datos",
+                   PC + "parcela_nueva"],
+    "parcela:leer": [PC + "parcela", PC + "parcela_geometria", PC + "parcela_baja"],
+    "propietario:leer": [PC + "finca", PC + "propietario_datos"],
+    "periodo:leer": [PM + "periodo_pasar", PM + "periodo_cerrar"],
+    "asignacion:leer": [PM + "asignacion_terminar"],
+    "medicion:leer": [PM + "medicion", PM + "medicion_modificar", PM + "medicion_enviar", PM + "medicion_aprobar",
+                      PM + "medicion_devolver", PM + "enmienda_solicitar"],
+    "enmienda:leer": [PM + "enmienda_autorizar", PM + "enmienda_rechazar"],
+    "finca:listar": [LISTAS, PC + "fincas", PM + "asignacion_nueva", PM + "asignaciones"],
+    "parcela:listar": [LISTAS, PM + "medicion_nueva"],
+    "periodo:listar": [LISTAS, PM + "periodos", PM + "mediciones", PM + "medicion"],
+    "asignacion:listar": [LISTAS, PM + "asignaciones"],
+    "medicion:listar": [LISTAS, PM + "mediciones"],
+    "enmienda:listar": [LISTAS, PM + "enmiendas", PM + "medicion"],
     "cuenta:crear": [S_CTA + "crear_cuenta", P + "cuenta_nueva"],
     "cuenta:modificar": [S_CTA + "modificar_cuenta", S_CTA + "enlace_activacion", P + "cuenta_modificar",
                          P + "cuenta_enlace"],
@@ -70,17 +94,15 @@ DONDE = {
     "factor:leer": [P + "restablecimiento_autorizar", P + "restablecimiento_rechazar"],
     "alerta:leer": [P + "alerta_resolver"],
     # Listas: el motor decide la lista y el PEP filtra por el alcance de cada rol
-    "cuenta:listar": [LISTAS, P + "cuentas", P + "mi_cuenta", P + "ventanas"],
+    "cuenta:listar": [LISTAS, P + "cuentas", P + "mi_cuenta", P + "ventanas",
+                      PM + "mediciones", PM + "medicion", PM + "asignaciones", PM + "enmiendas"],
     "rol:listar": [LISTAS, P + "solicitudes_rol", P + "cuenta"],
     "dispositivo:listar": [LISTAS, P + "dispositivos"],
     "factor:listar": [LISTAS, P + "restablecimientos"],
     "alerta:listar": [LISTAS, P + "alertas"],
 }
-PENDIENTE = {
-    # Columnas cuyas pantallas son de otras personas: el motor y el cliente ya deciden.
-    "O1a": "Persona 2", "O1b": "Persona 2", "O2": "Persona 2", "O3": "Persona 2", "O4": "Persona 2",
-    "O5": "Persona 2", "O6": "Persona 4", "O8": "Persona 4",
-}
+# Columnas sin pantalla todavía: el motor y el cliente ya deciden (certificados y bitácora).
+PENDIENTE = frozenset({"O6", "O8"})
 
 
 def donde(accion: str) -> list[str]:
@@ -93,7 +115,7 @@ def donde(accion: str) -> list[str]:
     if operacion == "X":
         lugares.append("cuentas/hbac.py:aplicar (conteo H3) y marca_de_agua")
     if objeto in PENDIENTE:
-        lugares.append(f"(pantalla de {PENDIENTE[objeto]})")
+        lugares.append("(pantalla pendiente)")
     return lugares
 
 
@@ -251,9 +273,10 @@ def generar() -> str:
         "- **AC·O1b CR y MO**: `catalogo/services.py:registrar_datos_propietario` se autoriza como",
         "  `propietario:crear_datos` (CR) si el propietario aún no tiene datos y como `propietario:registrar_datos`",
         "  (MO) si ya los tiene.",
-        "- **O1–O6 y O8**: el motor y el cliente ya deciden las lecturas, exportaciones y listas; las pantallas",
-        "  que las llaman son de Persona 2 (O1–O5) y Persona 4 (O6, O8). La lista de O6 y O8 se agrega en",
-        "  `autorizacion/listas.py` cuando existan sus modelos.",
+        "- **O1–O5**: las pantallas de `catalogo/pantallas.py` y `mediciones/pantallas.py` llaman al motor en",
+        "  cada lectura y lista, y a los servicios en cada cambio.",
+        "- **O6 y O8**: el motor y el cliente ya deciden lecturas, exportaciones y listas; sus pantallas y su",
+        "  entrada en `autorizacion/listas.py` se agregan con los modelos de certificados y bitácora.",
         "- **Exportaciones (X)**: el motor aplica C5 y H3 y Django cuenta los registros",
         "  (`cuentas/hbac.py:aplicar`); quien arme el archivo pone `cuentas/hbac.py:marca_de_agua`.",
         "- **factor:registrar (C21)**: el registro de factores es de allauth; `cuentas/mfa.py:ExigirMFAMiddleware`",

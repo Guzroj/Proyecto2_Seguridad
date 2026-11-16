@@ -25,6 +25,20 @@
                     {% if user.is_authenticated %}
                         <li><a href="{% url 'inicio' %}">Inicio</a></li>
                         <li><a href="{% url 'mi_cuenta' %}">Mi cuenta</a></li>
+                        {% comment %} Flujo de negocio: cada enlace según la celda L de la matriz (O1a, O2–O5). {% endcomment %}
+                        <li><a href="{% url 'catalogo_fincas' %}">Fincas</a></li>
+                        {% if "TC" in menu_roles or "VF" in menu_roles or "GC" in menu_roles or "AC" in menu_roles or "AE" in menu_roles %}
+                            <li><a href="{% url 'mediciones_periodos' %}">Períodos</a></li>
+                        {% endif %}
+                        {% if "TC" in menu_roles or "GC" in menu_roles or "AC" in menu_roles or "AE" in menu_roles %}
+                            <li><a href="{% url 'mediciones_asignaciones' %}">Asignaciones</a></li>
+                        {% endif %}
+                        {% if "TC" in menu_roles or "VF" in menu_roles or "GC" in menu_roles or "AE" in menu_roles or "PF" in menu_roles %}
+                            <li><a href="{% url 'mediciones_mediciones' %}">Mediciones</a></li>
+                        {% endif %}
+                        {% if "TC" in menu_roles or "GC" in menu_roles or "AE" in menu_roles %}
+                            <li><a href="{% url 'mediciones_enmiendas' %}">Enmiendas</a></li>
+                        {% endif %}
                         {% if "AC" in menu_roles or "GC" in menu_roles or "AE" in menu_roles %}
                             <li><a href="{% url 'gestion_cuentas' %}">Cuentas</a></li>
                             <li><a href="{% url 'gestion_solicitudes_rol' %}">Solicitudes de rol</a></li>
