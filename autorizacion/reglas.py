@@ -15,6 +15,9 @@ Regla de decisión:
   - RG5 Falla cerrada: si falta un atributo o una condición no se puede evaluar
     => NIEGA.
   - RG6 Si lo único que falla es el segundo factor reciente => REAUTENTICAR.
+  - Listas ("<objeto>:listar"): se evalúan solo las condiciones del sujeto y
+    se devuelven en `roles` todos los que conceden; el PEP filtra la consulta
+    con el alcance de esos roles.
   - HBAC: tras conceder, se aplican H1–H3 de la celda que concedió
     (autorizacion.hbac); pueden negar, pedir reautenticación o pedir alertas.
 
@@ -51,6 +54,7 @@ class Decision:
     regla: str
     motivo: str
     rol: str | None = None                       # rol que concedió
+    roles: tuple[str, ...] = field(default=())   # en listas: todos los roles que conceden
     hbac: tuple[str, ...] = field(default=())    # controles de la celda concedida
     alertas: tuple[dict, ...] = field(default=())  # alertas O9 que el PEP debe crear (H1–H3)
     marca_agua: bool = False                     # exportación concedida: lleva marca de agua
@@ -61,7 +65,7 @@ class Decision:
 
     def como_dict(self) -> dict:
         return {"resultado": self.resultado, "regla": self.regla, "motivo": self.motivo,
-                "rol": self.rol, "hbac": list(self.hbac), "alertas": list(self.alertas),
+                "rol": self.rol, "roles": list(self.roles), "hbac": list(self.hbac), "alertas": list(self.alertas),
                 "marca_agua": self.marca_agua}
 
 
@@ -203,25 +207,30 @@ def decidir(datos) -> Decision:
     if solicitud.estado != ESTADO_ACTIVA:
         return Decision(NIEGA, "RG1", "La cuenta del sujeto no está ACTIVA.")
 
+    es_lista = solicitud.accion in matriz.LISTAS
     evaluaciones: list[Evaluacion] = []
-    concedida: tuple[str, matriz.Permiso] | None = None
+    concedidas: list[tuple[str, matriz.Permiso]] = []
     for rol in sorted(solicitud.roles):
         permiso = matriz.permiso(rol, objeto, operacion)
         if permiso is None:
             continue
-        evaluacion = _evaluar_celda(solicitud, rol, permiso)
+        evaluado = permiso
+        if es_lista:  # el alcance lo filtra el PEP
+            evaluado = matriz.Permiso(tuple(c for c in permiso.condiciones
+                                            if c not in matriz.CONDICIONES_DE_ALCANCE), permiso.hbac)
+        evaluacion = _evaluar_celda(solicitud, rol, evaluado)
         if evaluacion.resultado == CONCEDE:
-            concedida = (rol, permiso)
-            break
-        evaluaciones.append(evaluacion)
+            concedidas.append((rol, permiso))
+            if not es_lista:
+                break
+        else:
+            evaluaciones.append(evaluacion)
 
-    if concedida is not None:
+    if concedidas:
         veto = _veto(solicitud)
         if veto is not None:
             return veto
-        rol, permiso = concedida
-        decision = Decision(CONCEDE, ",".join(permiso.condiciones) or "matriz",
-                            f"{rol}·{objeto} {operacion}", rol=rol, hbac=permiso.hbac)
+        decision = _concesion(concedidas, objeto, operacion)
         try:
             return hbac.controlar(solicitud, decision, objeto, operacion)
         except AtributoFaltante as exc:
@@ -234,6 +243,14 @@ def decidir(datos) -> Decision:
     if decision.resultado != FUERA_DE_ALCANCE:
         return _veto(solicitud) or decision
     return decision
+
+
+def _concesion(concedidas: list, objeto: str, operacion: str) -> Decision:
+    """Una lectura: el rol que concedió. Una lista: todos, y los controles de todas sus celdas."""
+    rol, permiso = next(((r, p) for r, p in concedidas if "H1" in p.hbac), concedidas[0])
+    hbac = tuple(sorted({h for _, p in concedidas for h in p.hbac}))
+    return Decision(CONCEDE, ",".join(permiso.condiciones) or "matriz", f"{rol}·{objeto} {operacion}",
+                    rol=rol, roles=tuple(r for r, _ in concedidas), hbac=hbac)
 
 
 def _veto(solicitud: Solicitud) -> Decision | None:

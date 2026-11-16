@@ -99,6 +99,22 @@ class Accion:
     BITACORA_EXPORTAR = "bitacora:exportar"      # O8 X
     ALERTA_EXPORTAR = "alerta:exportar"          # O9 X
 
+    # Listas (L sobre una lista): autorizacion.listas filtra por el alcance de cada rol
+    FINCA_LISTAR = "finca:listar"                # O1a L (lista)
+    PARCELA_LISTAR = "parcela:listar"            # O1a L (lista)
+    PROPIETARIO_LISTAR = "propietario:listar"    # O1b L (lista)
+    PERIODO_LISTAR = "periodo:listar"            # O2 L (lista)
+    ASIGNACION_LISTAR = "asignacion:listar"      # O3 L (lista)
+    MEDICION_LISTAR = "medicion:listar"          # O4 L (lista)
+    ENMIENDA_LISTAR = "enmienda:listar"          # O5 L (lista)
+    CERTIFICADO_LISTAR = "certificado:listar"    # O6 L (lista)
+    CUENTA_LISTAR = "cuenta:listar"              # O7a L (lista)
+    ROL_LISTAR = "rol:listar"                    # O7b L (lista)
+    DISPOSITIVO_LISTAR = "dispositivo:listar"    # O7c L (lista)
+    FACTOR_LISTAR = "factor:listar"              # O7d L (lista)
+    BITACORA_LISTAR = "bitacora:listar"          # O8 L (lista)
+    ALERTA_LISTAR = "alerta:listar"              # O9 L (lista)
+
     # Otras celdas que aún no tenían acción
     FACTOR_REGISTRAR = "factor:registrar"        # Todos·O7d CR (C21)
     MEDICION_SINCRONIZAR = "medicion:sincronizar"  # GC·O4 SI (C16)

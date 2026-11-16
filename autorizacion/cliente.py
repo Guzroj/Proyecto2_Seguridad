@@ -96,8 +96,8 @@ def consultar(solicitud: dict) -> dict:
         return {"resultado": "NIEGA", "regla": "RG5", "motivo": "Motor de autorización no disponible."}
 
 
-def autorizar(usuario, accion: str, recurso=None, contexto: dict | None = None) -> None:
-    """Gancho nucleo.ganchos.autorizar. No devuelve nada si concede; si no, lanza."""
+def _decidir(usuario, accion: str, recurso=None, contexto: dict | None = None) -> dict:
+    """Pregunta al motor, aplica los efectos HBAC y traduce la negación a su excepción."""
     from cuentas import hbac
 
     solicitud = pep.construir_solicitud(usuario, accion, recurso, contexto)
@@ -106,9 +106,26 @@ def autorizar(usuario, accion: str, recurso=None, contexto: dict | None = None) 
     resultado = decision.get("resultado")
     motivo = str(decision.get("motivo") or "Acceso denegado.")[:300]
     if resultado == "CONCEDE":
-        return None
+        return decision
     if resultado == "FUERA_DE_ALCANCE":
         raise FueraDeAlcance("No encontrado.")
     if resultado == "REAUTENTICAR":
         raise ReautenticacionRequerida(motivo)
     raise AccesoDenegado(motivo)
+
+
+def autorizar(usuario, accion: str, recurso=None, contexto: dict | None = None) -> None:
+    """Gancho nucleo.ganchos.autorizar. No devuelve nada si concede; si no, lanza."""
+    _decidir(usuario, accion, recurso, contexto)
+
+
+def autorizar_lista(usuario, accion: str) -> list[str]:
+    """
+    "<objeto>:listar": si concede, devuelve los roles con los que el sujeto puede
+    listar (el PEP filtra la consulta con el alcance de cada uno). Si no, lanza.
+    """
+    decision = _decidir(usuario, accion)
+    roles = decision.get("roles")
+    if not isinstance(roles, list) or not roles or not all(isinstance(r, str) for r in roles):
+        raise AccesoDenegado("Respuesta del motor sin roles para la lista: se niega.")
+    return roles

@@ -210,3 +210,37 @@ class CombinacionTests(unittest.TestCase):
 
         with mock.patch.object(reglas, "PROHIBICIONES", [falla]):
             self.assertEqual(reglas.decidir(solicitud("periodo:leer", "GC")).regla, "RG5")
+
+
+class ListaTests(unittest.TestCase):
+    """"<objeto>:listar": la celda y las condiciones del sujeto; el alcance lo filtra el PEP."""
+
+    def test_concede_sin_objeto_y_devuelve_los_roles(self):
+        d = reglas.decidir(solicitud("finca:listar", "PF"))                    # C4 lo filtra el PEP
+        self.assertEqual((d.resultado, d.roles), (CONCEDE, ("PF",)))
+        d = reglas.decidir(solicitud("finca:listar", "PF", "TC"))
+        self.assertEqual((d.resultado, d.roles, d.rol, d.hbac), (CONCEDE, ("PF", "TC"), "TC", ("H1", "H2")))
+        self.assertEqual(reglas.decidir(solicitud("finca:leer", "PF")).regla, "RG5")  # una lectura sí exige el objeto
+
+    def test_sin_l_en_la_celda_niega(self):
+        for accion, rol in (("alerta:listar", "TC"), ("asignacion:listar", "VF"), ("bitacora:listar", "AC"),
+                            ("rol:listar", "PF")):
+            with self.subTest(accion=accion, rol=rol):
+                d = reglas.decidir(solicitud(accion, rol))
+                self.assertEqual((d.resultado, d.regla), (NIEGA, "RG1"))
+
+    def test_ae_necesita_ventana(self):
+        ae = solicitud("medicion:listar", "AE")
+        self.assertEqual(reglas.decidir(ae).resultado, NIEGA)                  # sin ventana: C5
+        ae["sujeto"]["ventana"] = {"estado": "APROBADA", "inicio": "2026-11-01", "fin": "2026-11-20",
+                                   "hoy": "2026-11-11", "aprobada_por_gc": True, "aprobada_por_distinto": True}
+        self.assertEqual(reglas.decidir(ae).roles, ("AE",))
+
+    def test_hbac_cuenta_la_lista_como_una_lectura(self):
+        sol = solicitud("medicion:listar", "GC")
+        sol["hbac"]["h1_lecturas"] = 25
+        d = reglas.decidir(sol)
+        self.assertEqual((d.resultado, d.regla, d.alertas[0]["control"]), (NIEGA, "H1", "H1"))
+        sol = solicitud("finca:listar", "PF")
+        sol["hbac"]["h1_suspendido"] = True
+        self.assertEqual(reglas.decidir(sol).regla, "H1")                      # suspendido también como PF

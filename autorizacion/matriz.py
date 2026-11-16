@@ -13,6 +13,10 @@ fuera de horario: alerta sin cambiar la decisión), H3 (exportación), H4
 
 ACCIONES traduce el vocabulario de nucleo.acciones ("<objeto>:<operación>") a
 (columna, operación) de la matriz. Una acción que no está aquí se niega (RG1).
+
+"<objeto>:listar" es la operación L sobre una lista: el motor revisa la celda y
+las condiciones del sujeto (C5); las de CONDICIONES_DE_ALCANCE las aplica el PEP
+como filtro de la consulta (autorizacion.listas), objeto por objeto.
 """
 
 from dataclasses import dataclass
@@ -142,8 +146,15 @@ _LECTURAS = {
     "dispositivo": O7C, "factor": O7D, "bitacora": O8, "alerta": O9,
 }
 
+LISTAS: dict[str, tuple[str, str]] = {f"{nombre}:listar": (objeto, "L") for nombre, objeto in _LECTURAS.items()}
+
+# Condiciones de L que dependen del objeto (quién es dueño, autor, asignado...).
+# En una lista se aplican como filtro; las demás (C5) las evalúa el motor.
+CONDICIONES_DE_ALCANCE = frozenset({"C4", "C6", "C8", "C9", "C10", "C12", "C21"})
+
 ACCIONES: dict[str, tuple[str, str]] = {
     **{f"{nombre}:leer": (objeto, "L") for nombre, objeto in _LECTURAS.items()},
+    **LISTAS,
     **{f"{nombre}:exportar": (objeto, "X") for nombre, objeto in _LECTURAS.items()},
     # O1a / O1b
     "finca:crear": (O1A, "CR"), "finca:modificar": (O1A, "MO"), "finca:baja": (O1A, "BA"),
