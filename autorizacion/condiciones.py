@@ -480,9 +480,21 @@ def c17(s: Solicitud, rol: str):
     AC·O7d SO: u ≠ s ∧ cuenta(u).estado = ACTIVA.
     GC·O7d AU, RE: g ≠ solicitante ∧ g ≠ u. La verificación de identidad (método
     y fecha) llega en la petición y la valida el servicio antes de autorizar.
+    GC·O7d L (corrección 3): lo que podría resolver, y fuera de eso 404:
+      - un restablecimiento SOLICITADO que no pidió y que no es sobre sí mismo;
+      - los metadatos de factores de una cuenta ajena con un restablecimiento así
+        en curso (contexto.restablecimientos_en_curso: quién pidió cada uno).
     """
     _, operacion = destino(s)
     r = recurso(s)
+    if operacion == "L":
+        if r.get("tipo") == "usuario":
+            pedidos = ids(s.contexto, "restablecimientos_en_curso", "contexto")
+            dentro = dato(r, "id") != s.sujeto_id and bool(pedidos - {s.sujeto_id})
+        else:
+            dentro = (dato(r, "estado") == "SOLICITADO"
+                      and s.sujeto_id not in (dato(r, "solicitado_por"), dato(r, "usuario")))
+        return concede("C17") if dentro else fuera_de_alcance("C17")
     if operacion == "SO":
         if dato(r, "id") == s.sujeto_id:
             return niega("C17", "Nadie pide restablecer su propio segundo factor.")

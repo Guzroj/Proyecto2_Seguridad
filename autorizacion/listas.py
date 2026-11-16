@@ -97,7 +97,8 @@ LISTAS: dict[str, Lista] = {
     "roles": Lista("cuentas.RolUsuario", "rol:listar", {}),
     "solicitudes_rol": Lista("cuentas.SolicitudRol", "rol:listar", {}),
     "dispositivos": Lista("cuentas.DispositivoCampo", "dispositivo:listar", {}),
-    "restablecimientos": Lista("cuentas.RestablecimientoFactor", "factor:listar", {}),
+    "restablecimientos": Lista("cuentas.RestablecimientoFactor", "factor:listar", {
+        "C17": lambda s: Q(estado="SOLICITADO") & ~Q(solicitado_por_id=s) & ~Q(usuario_id=s)}),
     "alertas": Lista("cuentas.Alerta", "alerta:listar", {}),
 }
 

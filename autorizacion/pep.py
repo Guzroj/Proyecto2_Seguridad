@@ -273,10 +273,21 @@ def _contexto_factor_registrar(recurso, contexto: dict) -> dict:
     return {"tiene_factor": usuario_id is not None and Authenticator.objects.filter(user_id=usuario_id).exists()}
 
 
+def _contexto_factor_leer(recurso, contexto: dict) -> dict:
+    """C17 L (GC): quién pidió cada restablecimiento en curso de la cuenta cuyos metadatos se leen."""
+    from cuentas.models import EstadoRestablecimiento, RestablecimientoFactor, Usuario
+
+    if not isinstance(recurso, Usuario):
+        return {}
+    return {"restablecimientos_en_curso": sorted(set(RestablecimientoFactor.objects.filter(
+        usuario_id=recurso.pk, estado=EstadoRestablecimiento.SOLICITADO).values_list("solicitado_por_id", flat=True)))}
+
+
 # Atributos que dependen de la combinación recurso + contexto de una acción concreta.
 CONTEXTO_POR_ACCION = {
     "medicion:crear": _contexto_medicion_crear,
     "factor:registrar": _contexto_factor_registrar,
+    "factor:leer": _contexto_factor_leer,
 }
 
 

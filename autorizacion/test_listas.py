@@ -16,7 +16,7 @@ from unittest import mock
 
 from django.test import override_settings
 
-from autorizacion import listas, pep, reglas
+from autorizacion import cliente, listas, pep, reglas
 from autorizacion.listas import LISTAS, listar
 from autorizacion.test_cliente import LOCAL, MotorFalso, con_rol
 from autorizacion.test_integracion_o1_o3 import POLIGONO, EscenarioBase
@@ -25,11 +25,12 @@ from catalogo import services as catalogo
 from catalogo.models import DatosPropietario
 from cuentas import services as cuentas
 from cuentas import sesion
-from cuentas.models import ActividadHBAC, ControlHBAC
+from cuentas.models import ActividadHBAC, ControlHBAC, RestablecimientoFactor
 from cuentas.selectores import hoy
 from cuentas.test_dispositivos import ed25519_pem
 from mediciones import services as mediciones
-from nucleo.errores import AccesoDenegado
+from nucleo.acciones import Accion
+from nucleo.errores import AccesoDenegado, FueraDeAlcance
 
 class ListasBase(EscenarioBase):
     """
@@ -155,3 +156,32 @@ class HBACListasTests(ListasBase):
         sin_c6 = listas.Lista("catalogo.Finca", "finca:listar", {"C4": lambda s: listas.Q(propietario_id=s)})
         self.assertEqual(listas.alcance_de_rol(sin_c6, "TC", self.tc.pk), listas.NADA)
         self.assertEqual(listas.alcance_de_rol(sin_c6, "GC", self.gc.pk), listas.Q())
+
+
+class RestablecimientosGCTests(ListasBase):
+    """Corrección 3: GC·O7d L acotada por C17."""
+
+    def setUp(self):
+        super().setUp()
+        self.gc2 = con_rol("gerente2", "GC")
+        self.del_vf2 = RestablecimientoFactor.objects.get(usuario=self.vf2)
+        self.del_gc = cuentas.solicitar_restablecimiento(self.ac, self.gc, motivo="Cambió de teléfono")
+        self.usuarios.append(self.gc2)
+
+    def test_gc_lista_solo_lo_que_podria_resolver(self):
+        self.assertEqual(self.ids(self.gc, "restablecimientos"), {self.del_vf2.pk})       # no el suyo
+        self.assertEqual(self.ids(self.gc2, "restablecimientos"), {self.del_vf2.pk, self.del_gc.pk})
+        cuentas.rechazar_restablecimiento(self.gc2, self.del_gc, motivo="Duplicado")
+        self.assertEqual(self.ids(self.gc2, "restablecimientos"), {self.del_vf2.pk})      # resuelto: ya no
+        self.assertEqual(len(self.ids(self.ac, "restablecimientos")), 2)                  # AC: todos
+
+    def test_metadatos_solo_de_la_cuenta_en_restablecimiento(self):
+        cliente.autorizar(self.gc, Accion.FACTOR_LEER, self.vf2)
+        for persona in (self.tc, self.gc):                                                # sin restablecimiento / él mismo
+            with self.subTest(persona=persona.username), self.assertRaises(FueraDeAlcance):
+                cliente.autorizar(self.gc, Accion.FACTOR_LEER, persona)
+        with self.assertRaises(FueraDeAlcance):
+            cliente.autorizar(self.gc, Accion.FACTOR_LEER, self.del_gc)                   # el que es sobre él
+
+    def test_consistencia_con_dos_gc(self):
+        ConsistenciaTests.test_cada_lista_coincide_con_la_lectura_objeto_por_objeto(self)

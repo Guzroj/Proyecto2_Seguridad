@@ -447,6 +447,23 @@ class C17C18Tests(Base):
                 for cambio in ({"usuario": S}, {"solicitado_por": S}, {"estado": "AUTORIZADO"}):
                     self.assertDecision(decidir(accion, "GC", {**r, **cambio}), NIEGA, "C17")
 
+    def test_c17_leer_gc_solo_lo_que_podria_resolver(self):
+        r = {"tipo": "restablecimientofactor", "id": 1, "usuario": 40, "estado": "SOLICITADO", "solicitado_por": 41}
+        self.assertDecision(decidir("factor:leer", "GC", r), CONCEDE, "C17")
+        for cambio in ({"usuario": S}, {"solicitado_por": S}, {"estado": "AUTORIZADO"}, {"estado": "RECHAZADO"}):
+            with self.subTest(cambio=cambio):
+                self.assertDecision(decidir("factor:leer", "GC", {**r, **cambio}), FUERA_DE_ALCANCE, "C17")
+        self.assertDecision(decidir("factor:leer", "AC", {**r, "estado": "AUTORIZADO"}), CONCEDE)  # AC: sin condición
+
+    def test_c17_leer_metadatos_de_la_cuenta_en_restablecimiento(self):
+        persona = {"tipo": "usuario", "id": 40, "estado": "ACTIVA", "roles": ["VF"]}
+        en_curso = lambda *ids: {"restablecimientos_en_curso": list(ids)}
+        self.assertDecision(decidir("factor:leer", "GC", persona, en_curso(41)), CONCEDE, "C17")
+        self.assertDecision(decidir("factor:leer", "GC", persona, en_curso(S)), FUERA_DE_ALCANCE)   # lo pidió él
+        self.assertDecision(decidir("factor:leer", "GC", persona, en_curso()), FUERA_DE_ALCANCE)    # nada en curso
+        self.assertDecision(decidir("factor:leer", "GC", {**persona, "id": S}, en_curso(41)), FUERA_DE_ALCANCE)
+        self.assertDecision(decidir("factor:leer", "GC", persona), NIEGA, "RG5")                     # sin el atributo
+
     def test_c18(self):
         self.assertDecision(decidir("dispositivo:registrar", "AC", None, {"responsable": cuenta(roles=["TC"])}),
                             CONCEDE, "C18")

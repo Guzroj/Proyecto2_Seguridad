@@ -23,7 +23,7 @@ ESPERADA = {
            "O7a": "L C21", "O7b": "", "O7c": "", "O7d": "CR C21", "O8": "", "O9": ""},
     "GC": {"O1a": "L H1 ‡", "O1b": "", "O2": "L; AB C13; TV C13; CI C13", "O3": "L",
            "O4": "L H1 ‡; SI C16", "O5": "L; AU C3; RE C3", "O6": "L ‡",
-           "O7a": "L; AU C14", "O7b": "L; AU C7; RE C7", "O7c": "", "O7d": "CR C21; AU C17; RE C17",
+           "O7a": "L; AU C14", "O7b": "L; AU C7; RE C7", "O7c": "", "O7d": "L C17; CR C21; AU C17; RE C17",
            "O8": "L", "O9": "L; RS C22"},
     "AC": {"O1a": "L H1 ‡; CR C20; MO C20; BA C20", "O1b": "L H1 ‡; CR C20; MO C20", "O2": "L",
            "O3": "L; CR C19; MO C19", "O4": "", "O5": "", "O6": "",

@@ -100,7 +100,8 @@ MATRIZ: dict[str, dict[str, dict[str, Permiso]]] = {
         O7A: {"L": _p(), "AU": _p("C14")},
         O7B: {"L": _p(), "AU": _p("C7"), "RE": _p("C7")},
         O7C: {},
-        O7D: {"CR": _p("C21"), "AU": _p("C17"), "RE": _p("C17")},
+        # Corrección 3: GC lee (C17) los restablecimientos que puede resolver.
+        O7D: {"L": _p("C17"), "CR": _p("C21"), "AU": _p("C17"), "RE": _p("C17")},
         O8: {"L": _p()},
         O9: {"L": _p(), "RS": _p("C22")},
     },
@@ -150,7 +151,7 @@ LISTAS: dict[str, tuple[str, str]] = {f"{nombre}:listar": (objeto, "L") for nomb
 
 # Condiciones de L que dependen del objeto (quién es dueño, autor, asignado...).
 # En una lista se aplican como filtro; las demás (C5) las evalúa el motor.
-CONDICIONES_DE_ALCANCE = frozenset({"C4", "C6", "C8", "C9", "C10", "C12", "C21"})
+CONDICIONES_DE_ALCANCE = frozenset({"C4", "C6", "C8", "C9", "C10", "C12", "C17", "C21"})
 
 ACCIONES: dict[str, tuple[str, str]] = {
     **{f"{nombre}:leer": (objeto, "L") for nombre, objeto in _LECTURAS.items()},
