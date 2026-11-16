@@ -1,28 +1,3 @@
--- ===========================================================================
--- db/grant_after_migrate.sql
--- ---------------------------------------------------------------------------
--- Otorga privilegios DML al rol de aplicación (`app_runtime`) sobre TODAS las
--- tablas y secuencias del esquema `public`, y EXECUTE sobre las funciones
--- SECURITY DEFINER que la app necesita (login, media de lecturas y datos del
--- certificado).
---
--- ¿CUÁNDO SE EJECUTA?
---   Como rol DUEÑO, DESPUÉS de CADA `python manage.py migrate`.
---   Motivo: una migración puede crear tablas y secuencias nuevas, y los GRANT
---   de `db/roles_rls.sql` no se aplican retroactivamente.
---
---   Comando habitual tras migrar:
---     python manage.py migrate
---     psql "$DATABASE_URL_DUENO" -f db/grant_after_migrate.sql
---
--- Es IDEMPOTENTE: repetirlo no da error ni concede privilegios de más.
---
--- NOTA: si el rol dueño que ejecuta `migrate` es el mismo que ejecuta este
--- script, `ALTER DEFAULT PRIVILEGES` (ver `db/roles_rls.sql`) ya cubriría las
--- tablas futuras y este archivo solo sería una red de seguridad. Se mantiene
--- porque es explícito, verificable y no depende de quién migró.
--- ===========================================================================
-
 DO $$
 DECLARE
     v_rol      text := 'app_runtime';          -- rol de la aplicación en runtime
@@ -38,12 +13,6 @@ BEGIN
             v_rol, v_rol;
     END IF;
 
-    -- -----------------------------------------------------------------------
-    -- 1) Tablas: SELECT, INSERT, UPDATE, DELETE
-    -- -----------------------------------------------------------------------
-    -- Recorremos pg_tables para incluir tanto las tablas de la aplicación como
-    -- las de Django/contrib (auth_*, django_session, ...): la app las necesita
-    -- para login, sesiones y admin. RLS no se toca aquí (eso es de roles_rls.sql).
     FOR v_tabla IN
         SELECT tablename
           FROM pg_tables
@@ -56,11 +25,6 @@ BEGIN
         );
     END LOOP;
 
-    -- -----------------------------------------------------------------------
-    -- 2) Secuencias: USAGE y SELECT (necesarios para nextval en los INSERT)
-    -- -----------------------------------------------------------------------
-    -- relkind = 'S' son secuencias "clásicas". Las columnas IDENTITY de
-    -- PostgreSQL también se respaldan en una secuencia, así que quedan cubiertas.
     FOR v_secuencia IN
         SELECT c.relname
           FROM pg_class c
@@ -75,11 +39,6 @@ BEGIN
         );
     END LOOP;
 
-    -- -----------------------------------------------------------------------
-    -- 3) Dejamos constancia de los privilegios por defecto para lo futuro
-    -- -----------------------------------------------------------------------
-    -- Esto cubre las tablas/secuencias que cree el rol que ejecuta este script.
-    -- Es idempotente y no afecta a los objetos ya existentes.
     EXECUTE format(
         'ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I',
         v_esquema, v_rol
@@ -89,13 +48,6 @@ BEGIN
         v_esquema, v_rol
     );
 
-    -- -----------------------------------------------------------------------
-    -- 4) Funciones SECURITY DEFINER que la app necesita ejecutar
-    -- -----------------------------------------------------------------------
-    -- Las migraciones crean estas funciones con REVOKE ALL ... FROM PUBLIC y
-    -- sólo dan EXECUTE a `app_runtime` SI EL ROL YA EXISTE. Si el rol se creó
-    -- después de migrar, hay que otorgarlo aquí (idempotente). Se comprueba
-    -- que la función exista para poder correr el script antes de esa migración.
     IF to_regprocedure(v_esquema || '.cuentas_id_para_login(text)') IS NOT NULL THEN
         EXECUTE format(
             'GRANT EXECUTE ON FUNCTION %I.cuentas_id_para_login(text) TO %I',

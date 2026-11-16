@@ -1,16 +1,3 @@
-"""
-Ejecuta `db/grant_after_migrate.sql` con el rol DUEÑO, después de migrar.
-
-El pipeline lo corre al final del Cloud Run Job de migraciones:
-
-    python manage.py migrate && python manage.py grant_after_migrate
-
-Motivo: una migración puede crear tablas y secuencias nuevas, y los GRANT de
-`db/roles_rls.sql` no se aplican retroactivamente a los objetos que ya existen.
-El script es idempotente y solo concede DML (SELECT/INSERT/UPDATE/DELETE) y uso
-de secuencias al rol `app_runtime`; no toca RLS ni el esquema.
-"""
-
 from pathlib import Path
 
 from django.conf import settings
