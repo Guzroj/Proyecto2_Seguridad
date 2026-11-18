@@ -14,7 +14,8 @@ motor le dejaría leer objeto por objeto (p. ej., PF solo lo suyo).
 
 Las traducciones repiten las condiciones de autorizacion.condiciones; la prueba
 de consistencia compara, objeto por objeto, la lista con la decisión del motor.
-Certificados (O6) y bitácora (O8) se agregan cuando existan sus modelos.
+Certificados (O6): el PF ve los suyos EMITIDO o REVOCADO (C4); GC y AE todos.
+Bitácora (O8): GC y AE (C5 la decide el motor); nadie más.
 """
 
 from dataclasses import dataclass
@@ -100,6 +101,9 @@ LISTAS: dict[str, Lista] = {
     "restablecimientos": Lista("cuentas.RestablecimientoFactor", "factor:listar", {
         "C17": lambda s: Q(estado="SOLICITADO") & ~Q(solicitado_por_id=s) & ~Q(usuario_id=s)}),
     "alertas": Lista("cuentas.Alerta", "alerta:listar", {}),
+    "certificados": Lista("certificados.Certificado", "certificado:listar", {
+        "C4": lambda s: Q(propietario_id=s, estado__in=["EMITIDO", "REVOCADO"])}),
+    "bitacora": Lista("bitacora.Evento", "bitacora:listar", {}),
 }
 
 

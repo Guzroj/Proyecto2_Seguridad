@@ -28,6 +28,8 @@ env:
   JOB_MIGRATE: verdeazul-migrate
   JOB_TAREA_DIARIA: verdeazul-tarea-diaria
   SCHEDULER_TAREA_DIARIA: verdeazul-tarea-diaria
+  JOB_SELLAR_BITACORA: verdeazul-sellar-bitacora
+  SCHEDULER_SELLAR_BITACORA: verdeazul-sellar-bitacora
 
 jobs:
   # 1) Construir y publicar las dos imágenes
@@ -210,6 +212,7 @@ jobs:
             ALLOWED_HOSTS=verdeazul-allowed-hosts:latest
             CSRF_TRUSTED_ORIGINS=verdeazul-csrf-origins:latest
             MFA_CLAVE_CIFRADO=verdeazul-mfa-clave-cifrado:latest
+            CERTIFICADO_CLAVE_PRIVADA=verdeazul-certificado-clave:latest
           flags: --allow-unauthenticated --max-instances=5 --service-account=verdeazul-app@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
 
       - name: Crear o actualizar el Cloud Run Job de la tarea diaria
@@ -258,3 +261,45 @@ jobs:
               --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform" \
               --quiet
           fi
+
+      # Persona 4 · Sellos de la bitácora (Arquitectura §4.5): cada hora verifica la cadena y firma
+      # su cabeza con la clave de certificados; el sello queda en la base y en Cloud Logging.
+      - name: Crear o actualizar el Cloud Run Job del sellado de la bitácora
+        run: |
+          gcloud run jobs deploy "${JOB_SELLAR_BITACORA}" \
+            --image="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/${IMAGE_APP}:${{ needs.build-and-push.outputs.sha }}" \
+            --region="${REGION}" \
+            --service-account="verdeazul-app@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --command=python \
+            --args=manage.py,sellar_bitacora \
+            --set-secrets=DATABASE_URL=verdeazul-db-url:latest,SECRET_KEY=verdeazul-secret-key:latest,CERTIFICADO_CLAVE_PRIVADA=verdeazul-certificado-clave:latest \
+            --task-timeout=10m \
+            --max-retries=0 \
+            --quiet
+
+      - name: Permitir que Cloud Scheduler ejecute el sellado de la bitácora
+        run: |
+          gcloud run jobs add-iam-policy-binding "${JOB_SELLAR_BITACORA}" \
+            --region="${REGION}" \
+            --member="serviceAccount:verdeazul-app@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --role="roles/run.invoker" \
+            --quiet
+
+      - name: Crear o actualizar el disparador horario del sellado (Cloud Scheduler)
+        run: |
+          set -euo pipefail
+          URI="https://${REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJECT_ID}/jobs/${JOB_SELLAR_BITACORA}:run"
+          if gcloud scheduler jobs describe "${SCHEDULER_SELLAR_BITACORA}" --location="${REGION}" >/dev/null 2>&1; then
+            ACCION=update
+          else
+            ACCION=create
+          fi
+          gcloud scheduler jobs "${ACCION}" http "${SCHEDULER_SELLAR_BITACORA}" \
+            --location="${REGION}" \
+            --schedule="0 * * * *" \
+            --time-zone="America/Costa_Rica" \
+            --uri="${URI}" \
+            --http-method=POST \
+            --oauth-service-account-email="verdeazul-app@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform" \
+            --quiet

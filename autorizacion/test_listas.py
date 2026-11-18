@@ -21,7 +21,9 @@ from autorizacion.listas import LISTAS, listar
 from autorizacion.test_cliente import LOCAL, MotorFalso, con_rol
 from autorizacion.test_integracion_o1_o3 import EscenarioBase, poligono
 from autorizacion.test_integracion_o4_o6 import DATOS
+from bitacora.servicios import registrar_evento
 from catalogo import services as catalogo
+from certificados.servicios import emitir
 from catalogo.models import DatosPropietario
 from cuentas import services as cuentas
 from cuentas import sesion
@@ -50,6 +52,11 @@ class ListasBase(EscenarioBase):
         self.medicion2 = mediciones.crear_medicion(self.tc2, self.parcela2, self.periodo, **DATOS)
         for pf in (self.pf, self.pf2):
             catalogo.registrar_datos_propietario(self.ac, pf, nombre_completo=f"Nombre {pf.pk}", identificacion=f"1-{pf.pk}")
+        # O6 y O8 (Persona 4): el escenario usa ganchos de prueba, así que el certificado de la
+        # medición aprobada y un evento de bitácora se crean con los servicios reales.
+        self.certificado = emitir(self.medicion)
+        registrar_evento(actor=self.gc, accion=Accion.PERIODO_ABRIR, recurso_tipo="periodo",
+                         recurso_id=str(self.periodo.pk), despues={"estado": "ABIERTO"})
         self.ae = cuentas.crear_cuenta(self.ac, username="auditora", rol="AE", inicio=hoy(),
                                        fin=hoy() + timedelta(days=5))
         cuentas.aprobar_ventana(self.gc, self.ae.ventana_auditoria)

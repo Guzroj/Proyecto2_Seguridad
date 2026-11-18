@@ -67,6 +67,25 @@ BEGIN
         );
     END IF;
 
+    IF to_regprocedure(v_esquema || '.certificado_estado_publico(uuid, text)') IS NOT NULL THEN
+        EXECUTE format(
+            'GRANT EXECUTE ON FUNCTION %I.certificado_estado_publico(uuid, text) TO %I',
+            v_esquema, v_rol
+        );
+    END IF;
+
+    -- Persona 4: la bitácora es de solo inserción y los certificados nunca se borran.
+    -- El GRANT general de arriba les dio UPDATE/DELETE: se quitan de nuevo (y TRUNCATE).
+    IF to_regclass(v_esquema || '.bitacora_evento') IS NOT NULL THEN
+        EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE ON TABLE %I.bitacora_evento FROM %I', v_esquema, v_rol);
+    END IF;
+    IF to_regclass(v_esquema || '.bitacora_sellobitacora') IS NOT NULL THEN
+        EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE ON TABLE %I.bitacora_sellobitacora FROM %I', v_esquema, v_rol);
+    END IF;
+    IF to_regclass(v_esquema || '.certificados_certificado') IS NOT NULL THEN
+        EXECUTE format('REVOKE DELETE, TRUNCATE ON TABLE %I.certificados_certificado FROM %I', v_esquema, v_rol);
+    END IF;
+
     RAISE NOTICE 'Privilegios DML y de funciones de % sobre el esquema % actualizados.', v_rol, v_esquema;
 END
 $$;

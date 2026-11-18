@@ -44,7 +44,10 @@ Comandos útiles:
 | Consola SQL | `docker compose exec db psql -U verdeazul -d verdeazul` |
 | Correr pruebas | `docker compose exec web python manage.py test` |
 | Pruebas del motor (contenedor aparte) | `docker compose exec autorizador python -m unittest` |
-| Ver logs (eventos de bitácora) | `docker compose logs -f web` |
+| Ver logs | `docker compose logs -f web` |
+| Verificar la cadena de la bitácora | `docker compose exec web python manage.py verificar_bitacora` |
+| Sellar la cabeza de la bitácora (en producción, cada hora) | `docker compose exec web python manage.py sellar_bitacora` |
+| Generar la clave de firma de certificados | `docker compose exec web python manage.py generar_clave_certificados` |
 | Apagar | `docker compose down` |
 | Borrar la base local y empezar de cero | `docker compose down -v` |
 
@@ -101,6 +104,7 @@ commit, lo que permite volver a una imagen anterior sin ambigüedad.
 | `verdeazul-allowed-hosts` | `ALLOWED_HOSTS` (`*.run.app` del servicio) | `verdeazul` |
 | `verdeazul-csrf-origins` | `CSRF_TRUSTED_ORIGINS` (orígenes HTTPS) | `verdeazul` |
 | `verdeazul-mfa-clave-cifrado` | `MFA_CLAVE_CIFRADO`: valor aleatorio largo para cifrar los secretos TOTP | `verdeazul` |
+| `verdeazul-certificado-clave` | `CERTIFICADO_CLAVE_PRIVADA`: clave Ed25519 (32 bytes en base64) que firma los certificados. **Debe existir antes de desplegar** (ver §6.2) | `verdeazul` |
 | `AUTORIZADOR_URL` | URL privada del servicio autorizador | `verdeazul` |
 
 Los valores se montan como variables de entorno; el runtime nunca recibe credenciales del
@@ -209,6 +213,10 @@ nucleo/           piezas compartidas: errores, vocabulario de acciones, ganchos,
 cuentas/          O7–O9: cuentas y estados, roles con vigencia, sesiones, segundo factor, ventanas de
                   auditoría, dispositivos de campo, restablecimientos, alertas HBAC, RLS (migraciones)
                   y pantallas de gestión (/gestion/cuentas, roles, ventanas, ...)
+bitacora/         O8: bitácora encadenada (SHA-256) de solo inserción; pantallas de solo lectura
+certificados/     O6: emisión firmada con Ed25519 (gancho on_medicion_aprobada), P2, verificación
+  formato.py      firma y verificación sin Django: también es el verificador independiente
+exportaciones/    X: exportaciones del auditor con H3, N real y marca de agua (CSV)
 autorizacion/     motor de autorización
   pep.py, cliente.py, listas.py, procesos.py   PEP (Django): atributos leídos de la base, listas filtradas
   app.py, matriz.py, reglas.py, condiciones.py, hbac.py   PDP (FastAPI, contenedor aparte, sin base)
@@ -269,9 +277,10 @@ Se conectan en `settings.VERDEAZUL_GANCHOS` con la ruta de la función; no hay q
 | `on_medicion_aprobada` | `(medicion) -> None` | Emitir y firmar el certificado. Corre en la transacción de aprobación con la medición bloqueada; si lanza excepción, la aprobación se revierte. Si `medicion.version_de` no es `None`, tratar como versión enmendada. |
 
 Configuración actual: `autorizar` → `autorizacion.cliente.autorizar` (motor real, también en local;
-solo se concede lo que la matriz permite) y `usuarios_con_rol` → `cuentas.roles.usuarios_con_rol`
-(cuentas ACTIVAS con el rol vigente). `registrar_evento` y `on_medicion_aprobada` usan todavía la
-implementación provisional (escriben en el log) hasta que existan la bitácora y los certificados.
+solo se concede lo que la matriz permite), `usuarios_con_rol` → `cuentas.roles.usuarios_con_rol`
+(cuentas ACTIVAS con el rol vigente), `registrar_evento` → `bitacora.servicios.registrar_evento`
+(bitácora persistente y encadenada) y `on_medicion_aprobada` → `certificados.servicios.emitir`
+(certificado firmado; ver §6).
 Sin un gancho `autorizar` configurado, la implementación provisional **niega todo** (fallo cerrado).
 
 ### 3.3 Vocabulario de acciones (`nucleo/acciones.py`)
@@ -500,3 +509,55 @@ describe el estado final: **25 tablas con RLS y FORCE**, **5 metadatos de Django
 | D16 | El motivo de devolución (C2) y la justificación (C11) los valida el servicio, no el motor. | Vienen en la petición y no en la base; el motor no recibe textos libres, solo si la justificación está presente. |
 | D17 | Una sola ventana de auditoría por cuenta AE; al vencer, la tarea diaria deja la cuenta INACTIVA, termina su rol AE y cierra sus sesiones. | Una cuenta AE nominal por auditoría; un AE nunca tiene registros de campo pendientes, así que no pasa por EN_BAJA. |
 | D18 | RLS: cada `WITH CHECK` repite su condición completa (migración 0019), y las lecturas dentro de funciones `SECURITY DEFINER` usan una fase interna para que una política no se llame a sí misma (0023). | PostgreSQL combina las políticas permisivas de UPDATE (el `USING` de una con el `WITH CHECK` de otra), lo que permitía, por ejemplo, reactivar una cuenta EN_BAJA; y sin la fase interna la recursión dependía del orden de evaluación. |
+
+## 6. Certificados, bitácora y exportaciones (Persona 4)
+
+### 6.1 Qué hay
+
+| Pieza | Dónde | Qué hace |
+|---|---|---|
+| Bitácora (O8) | `bitacora/` | `registrar_evento` inserta cada evento en `bitacora_evento`. La **base** fija secuencia, hora y `hash = SHA256(hash_anterior ‖ can(e))` en un disparador con candado consultivo (sin bifurcaciones ni huecos; `UNIQUE(hash_anterior)` como respaldo). Solo inserción: un disparador rechaza UPDATE y DELETE aun al dueño; `app_runtime` no tiene UPDATE, DELETE ni TRUNCATE. RLS con FORCE: leen GC y AE. `bitacora_verificar()` y `manage.py verificar_bitacora` recalculan la cadena. **Sellos externos:** cada hora el Job `verdeazul-sellar-bitacora` verifica la cadena y, si está íntegra, firma su cabeza (secuencia y hash) con la clave Ed25519 de Verdeazul; el sello queda en `bitacora_sellobitacora` (solo inserción) y en Cloud Logging. |
+| Certificados (O6) | `certificados/` | Al aprobar (`on_medicion_aprobada`, en la misma transacción) se emite un certificado firmado con Ed25519; P2 revoca y reemite si una enmienda cambia las toneladas, o mantiene el vigente si no. A lo sumo un `EMITIDO` por parcela y período (índice único parcial). Disparadores: solo nace `EMITIDO` de una medición `APROBADA` coherente y por su verificador; solo pasa a `REVOCADO` por una versión enmendada aprobada con otras toneladas; nunca se borra. |
+| Verificación | `certificados/formato.py` | Sin Django ni base: `python certificados/formato.py certificado.json --huella <huella>`. En el sitio: `/certificados/verificar/` (pública, con límite de tasa: 10 por minuto y 60 por hora por IP, 300 por minuto por instancia; responde 429) y `/certificados/clave-publica/`. |
+| Exportaciones (X) | `exportaciones/` | `/gestion/exportaciones/`: el AE exporta cualquiera de las 13 columnas en CSV. Se cuenta N real, el motor decide con `{"registros": N}` (C5, H3), el archivo lleva la marca de agua en la primera línea, en cada fila y al final, y la exportación (o su negación) queda en la bitácora. |
+| Pantallas | `/gestion/certificados/`, `/gestion/bitacora/` | Lista, ficha y descarga del documento firmado; lista, detalle y verificación de la bitácora. Ninguna escribe. |
+
+### 6.2 Clave de firma
+
+1. Generar: `docker compose exec web python manage.py generar_clave_certificados`. Imprime la **huella** (pública) y
+   la **clave privada** (secreta).
+2. Local: poner la privada en `.env` como `CERTIFICADO_CLAVE_PRIVADA=` (`.env` está en `.gitignore`).
+3. Producción: crear el secreto `verdeazul-certificado-clave` en Secret Manager con la privada y dar
+   `roles/secretmanager.secretAccessor` sobre él a `verdeazul-app`. `deploy.yml` lo monta como variable
+   de entorno. **Sin ese secreto el despliegue falla**, y sin clave la aprobación se revierte (fallo cerrado).
+4. Publicar la huella (aquí y en `/certificados/clave-publica/`). Al rotar, poner las huellas viejas y la
+   nueva en `CERTIFICADO_CLAVES_CONFIABLES` (separadas por coma) para que los certificados viejos sigan verificando.
+
+Las pruebas no necesitan la clave: `verdeazul/pruebas.py` usa una efímera si no hay una configurada.
+
+### 6.3 Decisiones y desviaciones
+
+| # | Decisión | Por qué | Implicación de seguridad |
+|---|---|---|---|
+| D23 | La bitácora vive en la misma base (Neon) y se encadena **síncronamente** en un disparador, en vez de una instancia aparte con relé y *outbox* asíncrono (Arquitectura §4.5). | Una sola base gestionada; sin proceso de relé que operar. | Los eventos de un cambio se confirman con el cambio (o ninguno); las negaciones se escriben fuera de la transacción revertida (y, si llegan dentro de una ajena durante una petición, al terminarla). El candado serializa las escrituras de la bitácora (costo aceptado a esta escala). Quien administre la base puede saltarse los disparadores, pero la cadena lo delata; si reescribe la cadena ENTERA recalculando los hashes, o corta el final, lo delatan los **sellos** horarios: no puede firmar uno nuevo sin la clave, que no está en la base. Los sellos van a Cloud Logging (el "Wazuh y respaldos fuera del sitio" de §4.5) en lugar de a un SIEM; un sello solo cubre hasta su hora, así que lo de la última hora queda protegido solo por la cadena. El mismo Job hace la verificación periódica y no sella una cadena alterada. |
+| D24 | La clave de firma vive en Secret Manager y llega como variable de entorno, no en Transit de OpenBao (no exportable). | D5: OpenBao → Secret Manager. | La clave está en la memoria del contenedor: un compromiso del servicio la expone. No se registra ni se guarda en la base, la bitácora ni los archivos. |
+| D25 | Autenticidad por huella publicada: la verificación separa "firma íntegra" (con la clave incrustada) de "clave de Verdeazul" (huella en `CERTIFICADO_CLAVES_CONFIABLES`, publicada por HTTPS). | Una clave incrustada sola no prueba quién firmó: cualquiera firma un documento falso con su propia clave. | Un documento re-firmado con otra clave sale "íntegro pero no de Verdeazul" y se rechaza. |
+| D26 | Estado `REVOCADO` (matriz y P2), no `REEMPLAZADO` (Arquitectura §2.3); el PF ve también sus revocados (C4 de la matriz). | La matriz es el documento verificable celda por celda. | El histórico se conserva y el reemplazo se enlaza con `reemplaza_a`. |
+| D27 | Sin datos del propietario (O1b) no se emite y la aprobación se revierte (409). | El certificado identifica al titular; los datos se leen solo por `datos_propietario_para_certificado`. | El VF nunca lee O1b directamente. |
+| D28 | Fase RLS `emision`: el VF lee, inserta y revoca certificados solo mientras dura la emisión de su aprobación. | La matriz no le da O6 al VF; la emisión corre con su conexión. | Fuera de la emisión el VF ve cero certificados (probado con el rol de la aplicación). Como las demás fases, la fija la aplicación (límite de `cuentas/rls.py`). |
+| D29 | RG4: toda lectura concedida de O1, O4, O6 y O8 la registra el PEP (`autorizacion/cliente.py`) con resultado `CONCEDIDO`; si no se puede registrar, se niega. | RG4 de la matriz. | Más filas en la bitácora (retención: Arquitectura §4.5). |
+| D30 | Verificación pública sin cuenta: no lee O6, solo el estado del certificado cuyo id **y** firma coinciden (`certificado_estado_publico`). | Un comprador debe poder verificar sin acceso a Verdeazul (enunciado §2.2) y saber si fue revocado. | No revela nada que no esté en el archivo. Límite de tasa por IP (la última de `X-Forwarded-For`, la que agrega Cloud Run) y por instancia, con 429 y un solo aviso en la bitácora por ventana. Riesgo residual: el contador vive en la caché de cada instancia (con `--max-instances=5`, hasta 5 veces el límite) y detrás de un balanceador que agregue su IP el límite por IP se vuelve global. |
+| D31 | Exportación por POST con CSRF; N contado antes de autorizar y comprobado al leer; tope de 50 000 filas; prefijo `'` contra inyección de fórmulas CSV. | Un GET ajeno no debe gastar la cuota H3 del auditor; N debe ser exactamente lo exportado. | Campos de lista blanca: nunca hashes, secretos TOTP, llaves ni el contenido de un factor. |
+| D32 | TRUNCATE de bitácora y certificados lo impiden los privilegios de `app_runtime` (y `grant_after_migrate.sql` los vuelve a quitar), no un disparador. | Igual que el resto del dominio; `migrate` y las pruebas vacían tablas como dueño. | Solo el dueño (migraciones) podría truncar. |
+
+### 6.4 Pruebas
+
+`certificados/test_certificados.py`, `certificados/test_pantallas.py`, `bitacora/test_bitacora.py` y
+`exportaciones/test_exportaciones.py`. Las de `autorizacion/` no las descubre `manage.py test` sin etiquetas
+(la carpeta no tiene `__init__.py`); para correr todo:
+
+```bash
+docker compose exec web sh -c 'python manage.py test . $(ls autorizacion/test_*.py autorizacion/tests.py | sed "s#/#.#; s#[.]py##")'
+docker compose exec autorizador python -m unittest discover -s autorizacion -p "test_*.py"
+```
+

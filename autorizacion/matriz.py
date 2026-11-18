@@ -189,7 +189,13 @@ ACCIONES: dict[str, tuple[str, str]] = {
 
 # Acciones de procesos automáticos: no son de ninguna persona, el motor las niega
 # siempre a cualquier sujeto (los procesos no pasan por autorizar()).
-ACCIONES_DE_PROCESO = frozenset({"cuenta:activar", "alerta:crear"})
+ACCIONES_DE_PROCESO = frozenset({
+    "cuenta:activar", "alerta:crear",
+    # SYS-EMI (Tabla 3 de la matriz): emitir, revocar o mantener O6 dentro de un AP; y la
+    # verificación pública de un documento, que no lee la base más que el estado.
+    "certificado:emitir", "certificado:revocar", "certificado:mantener", "certificado:verificar",
+    "bitacora:sellar",  # sellador de la bitácora (Arquitectura §4.5): solo el proceso horario
+})
 
 
 def permiso(rol: str, objeto: str, operacion: str) -> Permiso | None:
