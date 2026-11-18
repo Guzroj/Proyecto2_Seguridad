@@ -30,6 +30,8 @@ NOMBRES_OBJETO = {
 # Dónde se aplica cada acción del lado Django (PEP): servicio o pantalla que llama al motor.
 # ---------------------------------------------------------------------------
 P, PC, PM = "cuentas/pantallas.py:", "catalogo/pantallas.py:", "mediciones/pantallas.py:"
+PCE, PB, PX = "certificados/pantallas.py:", "bitacora/pantallas.py:", "exportaciones/pantallas.py:"
+S_X = "exportaciones/servicios.py:exportar"
 S_CAT, S_MED, S_CTA = "catalogo/services.py:", "mediciones/services.py:", "cuentas/services.py:"
 LISTAS = "autorizacion/listas.py:listar"
 
@@ -100,9 +102,15 @@ DONDE = {
     "dispositivo:listar": [LISTAS, P + "dispositivos"],
     "factor:listar": [LISTAS, P + "restablecimientos"],
     "alerta:listar": [LISTAS, P + "alertas"],
+    # O6 · Certificados (Persona 4): lectura y lista; la emisión no es de nadie (SYS-EMI)
+    "certificado:leer": [PCE + "certificado", PCE + "certificado_descargar"],
+    "certificado:listar": [LISTAS, PCE + "certificados"],
+    # O8 · Bitácora (Persona 4): solo lectura
+    "bitacora:leer": [PB + "evento"],
+    "bitacora:listar": [LISTAS, PB + "eventos", PB + "verificar"],
 }
-# Columnas sin pantalla todavía: el motor y el cliente ya deciden (certificados y bitácora).
-PENDIENTE = frozenset({"O6", "O8"})
+# Columnas sin pantalla todavía (hoy ninguna: O6 y O8 ya tienen las suyas).
+PENDIENTE: frozenset = frozenset()
 
 
 def donde(accion: str) -> list[str]:
@@ -113,7 +121,7 @@ def donde(accion: str) -> list[str]:
         return [LISTAS]
     lugares = ["autorizacion/cliente.py:autorizar"]
     if operacion == "X":
-        lugares.append("cuentas/hbac.py:aplicar (conteo H3) y marca_de_agua")
+        lugares += [S_X, PX + "exportar", "cuentas/hbac.py:aplicar (conteo H3) y marca_de_agua"]
     if objeto in PENDIENTE:
         lugares.append("(pantalla pendiente)")
     return lugares
@@ -127,6 +135,8 @@ TC, TI1, TI2, TI3 = ("autorizacion/test_condiciones.py::", "autorizacion/test_in
 TL, TP, TPR, TPI = ("autorizacion/test_listas.py::", "cuentas/test_pantallas.py::",
                     "cuentas/test_pantallas_roles.py::", "cuentas/test_pantallas_identidad.py::")
 TD = "mediciones/test_disparadores.py::"  # la base revalida con disparadores (defensa en profundidad)
+TCE, TPCE = "certificados/test_certificados.py::", "certificados/test_pantallas.py::"
+TB, TX = "bitacora/test_bitacora.py::", "exportaciones/test_exportaciones.py::"
 
 SIEMPRE = ["autorizacion/test_cobertura.py::CeldaPorCeldaTests", "autorizacion/test_reglas.py::MatrizTests"]
 VACIA = ["autorizacion/test_reglas.py::DecisionTests.test_rg1_denegacion_por_defecto"]
@@ -137,8 +147,10 @@ POR_CONDICION = {
     "C2": [TC + "C2Tests", TI2 + "O4Tests.test_c2_aprobar_y_v4",
            TD + "MedicionTests.test_c2_con_sujeto_solo_aprueba_el_verificador_asignado"],
     "C3": [TC + "C3Tests", TI2 + "EnmiendaTests.test_v15_solicitar_autorizar_y_aprobar_la_version"],
-    "C4": [TC + "C4Tests", TI1 + "LecturasTests.test_c4_pf_ve_lo_suyo", TL + "AlcanceTests.test_pf_solo_ve_lo_suyo"],
-    "C5": [TC + "C5Tests", TI3 + "VentanaYAuditorTests", TL + "AlcanceTests.test_ae_fuera_de_su_ventana_no_lista"],
+    "C4": [TC + "C4Tests", TI1 + "LecturasTests.test_c4_pf_ve_lo_suyo", TL + "AlcanceTests.test_pf_solo_ve_lo_suyo",
+           TCE + "LecturaC4Tests", TPCE + "CertificadosPantallaTests"],
+    "C5": [TC + "C5Tests", TI3 + "VentanaYAuditorTests", TL + "AlcanceTests.test_ae_fuera_de_su_ventana_no_lista",
+           TX + "ExportarTests.test_ae_fuera_de_su_ventana_no_exporta"],
     "C6": [TC + "C6C8C10Tests.test_c6_tc_lee_la_finca_que_tiene_asignada",
            TI1 + "LecturasTests.test_c6_y_v1_tc_solo_ve_la_finca_asignada",
            TL + "AlcanceTests.test_tc_ve_lo_asignado_y_lo_suyo"],
@@ -165,7 +177,8 @@ POR_CONDICION = {
     "C22": [TC + "C21C22Tests.test_c22_y_v14", TI3 + "DispositivosFactorYAlertasTests.test_c22_y_v14", TPI + "AlertasTests"],
     "H1": ["autorizacion/test_hbac.py::H1Tests", "autorizacion/test_integracion_hbac.py::H1Tests"],
     "H2": ["autorizacion/test_hbac.py::H2Tests", "autorizacion/test_integracion_hbac.py::H2Tests"],
-    "H3": ["autorizacion/test_hbac.py::H3Tests", "autorizacion/test_integracion_hbac.py::H3Tests"],
+    "H3": ["autorizacion/test_hbac.py::H3Tests", "autorizacion/test_integracion_hbac.py::H3Tests",
+           TX + "ExportarTests", TPCE + "ExportacionPantallaTests"],
     "H4": [TC + "C1Tests.test_v2_h4_aprobada_o_periodo_cerrado_no_se_modifica_nunca",
            TI2 + "O4Tests.test_v2_h4_una_aprobada_no_se_modifica",
            TD + "MedicionTests.test_h4_una_aprobada_no_cambia_ni_por_sql", TD + "ActoresTests"],
@@ -184,6 +197,10 @@ RLS = {
     "O7b": ["cuentas/test_roles_c7.py::C7RLSTests"],
     "O7c": ["cuentas/test_dispositivos.py::DispositivosRLSTests"],
     "O7d": ["cuentas/test_restablecimiento.py::C17RLSTests", "cuentas/test_mfa.py::PreingresoRLSTests"],
+    "O6": [TCE + "RLSCertificadosTests", TCE + "DisparadoresTests", TCE + "EmisionTests", TCE + "P2Tests",
+           TCE + "ManipulacionTests", TPCE + "VerificacionPublicaTests"],
+    "O8": [TB + "PermisosTests", TB + "CadenaTests", TB + "NegacionesFueraDelRollbackTests", TB + "SellosTests",
+           TPCE + "BitacoraPantallaTests"],
     "O9": ["cuentas/test_alertas.py::AlertasRLSTests"],
 }
 SIN_ACCION_PROPIA: dict[tuple[str, str, str], str] = {}  # hoy ninguna (AC·O1b CR: propietario:crear_datos)
@@ -279,10 +296,17 @@ def generar() -> str:
         "  (MO) si ya los tiene.",
         "- **O1–O5**: las pantallas de `catalogo/pantallas.py` y `mediciones/pantallas.py` llaman al motor en",
         "  cada lectura y lista, y a los servicios en cada cambio.",
-        "- **O6 y O8**: el motor y el cliente ya deciden lecturas, exportaciones y listas; sus pantallas y su",
-        "  entrada en `autorizacion/listas.py` se agregan con los modelos de certificados y bitácora.",
-        "- **Exportaciones (X)**: el motor aplica C5 y H3 y Django cuenta los registros",
-        "  (`cuentas/hbac.py:aplicar`); quien arme el archivo pone `cuentas/hbac.py:marca_de_agua`.",
+        "- **O6**: `certificados/pantallas.py` (lista, ficha y descarga) pasa por el motor; la emisión y la",
+        "  revocación no son operaciones de ninguna persona: las hace el proceso SYS-EMI dentro de la aprobación",
+        "  (`certificados/servicios.py:emitir`, gancho `on_medicion_aprobada`) y la base las revalida con",
+        "  disparadores y RLS. La verificación pública (`certificados/pantallas.py:verificar`) no lee O6: solo",
+        "  el estado de un certificado cuyo id y firma coinciden.",
+        "- **O8**: `bitacora/pantallas.py` es de solo lectura; nadie escribe la bitácora por una pantalla. Los",
+        "  eventos los inserta `bitacora/servicios.py:registrar_evento` y la base los encadena (SHA-256) y",
+        "  rechaza UPDATE y DELETE.",
+        "- **Exportaciones (X)**: `exportaciones/servicios.py:exportar` cuenta los registros reales, el motor",
+        "  aplica C5 y H3 con ese número (`{\"registros\": N}`), Django lo anota (`cuentas/hbac.py:aplicar`) y el",
+        "  archivo lleva `cuentas/hbac.py:marca_de_agua`; la exportación y cada negación quedan en O8.",
         "- **factor:registrar (C21)**: el registro de factores es de allauth; `cuentas/mfa.py:ExigirMFAMiddleware`",
         "  exige segundo factor reciente si ya hay uno, y el motor evalúa C21 con el mismo atributo.",
         "",

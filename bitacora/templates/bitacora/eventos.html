@@ -1,0 +1,39 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Bitácora{% endblock %}
+{% block content %}
+  <h1>Bitácora de auditoría</h1>
+  <p>Solo lectura. Cada evento está encadenado con el anterior (SHA-256).
+     <a href="{% url 'bitacora_verificar' %}">Verificar la integridad de la cadena</a></p>
+  <form method="get">
+    <label>Acción (prefijo) <input name="accion" value="{{ filtros.accion|default:'' }}" maxlength="64"></label>
+    <label>Resultado
+      <select name="resultado">
+        <option value="">Todos</option>
+        {% for valor, nombre in resultados %}<option value="{{ valor }}"{% if valor == filtros.resultado %} selected{% endif %}>{{ nombre }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Cuenta (id) <input name="actor" value="{{ filtros.actor|default:'' }}" size="6"></label>
+    <button type="submit">Filtrar</button>
+  </form>
+  <table>
+    <thead><tr><th>#</th><th>Momento (UTC)</th><th>Actor</th><th>Acción</th><th>Recurso</th><th>Resultado</th><th>Detalle</th></tr></thead>
+    <tbody>
+      {% for e in pagina %}
+        <tr>
+          <td><a href="{% url 'bitacora_evento' e.pk %}">{{ e.secuencia }}</a></td>
+          <td>{{ e.momento|date:"Y-m-d H:i:s" }}</td>
+          <td>{% if e.actor_id %}{{ e.actor_nombre }} (#{{ e.actor_id }}){% else %}sistema{% endif %}</td>
+          <td>{{ e.accion }}</td>
+          <td>{{ e.recurso_tipo }} {{ e.recurso_id|slice:":12" }}</td>
+          <td>{{ e.resultado }}</td>
+          <td>{{ e.detalle|truncatechars:60 }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7">No hay eventos para mostrar.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p>Página {{ pagina.number }} de {{ pagina.paginator.num_pages }}
+    {% if pagina.has_previous %}<a href="?pagina={{ pagina.previous_page_number }}{% for k, v in filtros.items %}&amp;{{ k }}={{ v|urlencode }}{% endfor %}">anterior</a>{% endif %}
+    {% if pagina.has_next %}<a href="?pagina={{ pagina.next_page_number }}{% for k, v in filtros.items %}&amp;{{ k }}={{ v|urlencode }}{% endfor %}">siguiente</a>{% endif %}</p>
+{% endblock %}

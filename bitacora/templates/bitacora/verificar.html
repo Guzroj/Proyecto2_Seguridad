@@ -1,0 +1,21 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Integridad de la bitácora{% endblock %}
+{% block content %}
+  <h1>Integridad de la bitácora</h1>
+  {% if problemas %}
+    <p><strong>ALTERADA:</strong> {{ problemas|length }} problema(s) en {{ total }} eventos.</p>
+    <ul>{% for secuencia, problema in problemas %}<li>Evento #{{ secuencia }}: {{ problema }}</li>{% endfor %}</ul>
+  {% else %}
+    <p><strong>Íntegra:</strong> {{ total }} eventos; cada hash coincide con su contenido y con el anterior, y cada sello firmado coincide con la cadena.</p>
+  {% endif %}
+  {% if ultimo %}<p>Cabeza de la cadena: evento #{{ ultimo.secuencia }}, hash <code>{{ ultimo.hash }}</code></p>{% endif %}
+  <h2>Sellos firmados</h2>
+  {% if ultimo_sello %}
+    <p>{{ sellos }} sello(s); el último cubre hasta el evento #{{ ultimo_sello.secuencia }}
+       ({{ ultimo_sello.momento|date:"Y-m-d H:i" }}), firmado con la clave <code>{{ ultimo_sello.huella_clave|slice:":16" }}…</code>.
+       Los eventos posteriores quedan cubiertos por el siguiente sello horario.</p>
+  {% else %}
+    <p>Todavía no hay sellos: el proceso horario <code>sellar_bitacora</code> firma la cabeza de la cadena.</p>
+  {% endif %}
+  <p><a href="{% url 'bitacora_eventos' %}">Volver a la bitácora</a></p>
+{% endblock %}

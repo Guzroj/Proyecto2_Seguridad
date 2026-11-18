@@ -66,6 +66,14 @@ class Accion:
     FACTOR_AUTORIZAR_RESTABLECIMIENTO = "factor:autorizar_restablecimiento"    # GC·O7d AU (C17)
     FACTOR_RECHAZAR_RESTABLECIMIENTO = "factor:rechazar_restablecimiento"      # GC·O7d RE (C17)
 
+    # O6 · Certificados: solo el proceso de emisión (SYS-EMI) los crea o revoca, dentro de la
+    # aprobación de una medición (P2). Ninguna persona tiene estas operaciones en la matriz.
+    CERTIFICADO_EMITIR = "certificado:emitir"        # SYS-EMI: emite O6 al aprobar (C2)
+    CERTIFICADO_REVOCAR = "certificado:revocar"      # SYS-EMI: P2, enmienda que cambia las toneladas
+    CERTIFICADO_MANTENER = "certificado:mantener"    # SYS-EMI: P2, enmienda sin cambio de toneladas
+    CERTIFICADO_VERIFICAR = "certificado:verificar"  # verificación pública de un documento (sin datos de la base)
+    BITACORA_SELLAR = "bitacora:sellar"              # proceso horario: firma la cabeza de la cadena (§4.5)
+
     # O9 · Alertas
     ALERTA_CREAR = "alerta:crear"                # Motor HBAC (proceso): crea en O9
     ALERTA_RESOLVER = "alerta:resolver"          # GC·O9 RS (C22)

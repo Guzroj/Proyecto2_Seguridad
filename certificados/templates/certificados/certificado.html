@@ -1,0 +1,36 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Certificado{% endblock %}
+{% block content %}
+  <h1>Certificado {{ c.pk }}</h1>
+  <p><strong>Estado:</strong> {{ c.estado }}
+    {% if c.estado == "REVOCADO" %} desde {{ c.revocado_en|date:"Y-m-d H:i" }} — {{ c.motivo_revocacion }}{% endif %}</p>
+  <h2>Historial (P2)</h2>
+  <ul>
+    <li>Reemplaza a:
+      {% if reemplaza_a %}<a href="{% url 'certificados_certificado' reemplaza_a %}">{{ reemplaza_a }}</a>
+      {% elif c.reemplaza_a_id %}un certificado anterior{% else %}—{% endif %}</li>
+    <li>Reemplazado por:
+      {% if reemplazado_por %}<a href="{% url 'certificados_certificado' reemplazado_por %}">{{ reemplazado_por }}</a>{% else %}—{% endif %}</li>
+  </ul>
+  <h2>Contenido firmado</h2>
+  <table>
+    <tr><th>Propietario</th><td>{{ contenido.propietario.nombre_completo }} ({{ contenido.propietario.identificacion }})</td></tr>
+    <tr><th>Finca</th><td>{{ finca.nombre }} — {{ finca.ubicacion }}</td></tr>
+    <tr><th>Parcela</th><td>{{ parcela.codigo }} · geometría v{{ parcela.version_geometria }} · {{ parcela.area_ha }} ha</td></tr>
+    <tr><th>Período</th><td>{{ periodo.nombre }} ({{ periodo.inicio }} a {{ periodo.fin }})</td></tr>
+    <tr><th>Toneladas de CO₂</th><td>{{ contenido.toneladas_co2 }}</td></tr>
+    <tr><th>Medición</th><td>{{ contenido.medicion.id }}{% if contenido.medicion.version_de %} (versión enmendada de {{ contenido.medicion.version_de }}){% endif %}</td></tr>
+    <tr><th>Método</th><td>{{ contenido.metodo }}</td></tr>
+    <tr><th>Emitido</th><td>{{ contenido.certificado.emitido_en }}</td></tr>
+  </table>
+  <h2>Firma digital (Ed25519)</h2>
+  <p><strong>Huella de la clave:</strong> <code>{{ huella_legible }}</code></p>
+  {% if verificacion.valido %}
+    <p><strong>Verificado:</strong> la firma corresponde al contenido y la clave es de Verdeazul.</p>
+  {% else %}
+    <p><strong>NO verifica:</strong></p>
+    <ul>{% for e in verificacion.errores %}<li>{{ e }}</li>{% endfor %}</ul>
+  {% endif %}
+  <p><a href="{% url 'certificados_descargar' c.pk %}">Descargar el certificado firmado (JSON)</a> ·
+     <a href="{% url 'certificados_verificar' %}">Verificar un archivo</a></p>
+{% endblock %}

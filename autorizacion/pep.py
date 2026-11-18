@@ -239,6 +239,16 @@ def _dispositivo(d) -> dict:
     return {"responsable": d.responsable_id, "estado": d.estado}
 
 
+def _certificado(c) -> dict:
+    """C4 (PF·O6 L): f.propietario = s y estado EMITIDO o REVOCADO. Sin datos del documento."""
+    return {"propietario": c.propietario_id, "estado": c.estado, "parcela": c.parcela_id, "periodo": c.periodo_id}
+
+
+def _evento(e) -> dict:
+    """O8: GC L y AE L/X [C5] no dependen del evento; solo se informa quién actuó y el resultado."""
+    return {"actor": e.actor_id, "resultado": e.resultado}
+
+
 ATRIBUTOS = {
     "usuario": _usuario,
     "finca": _finca,
@@ -254,6 +264,8 @@ ATRIBUTOS = {
     "alerta": _alerta,
     "sesion": _sesion,
     "dispositivocampo": _dispositivo,
+    "certificado": _certificado,
+    "evento": _evento,
 }
 
 

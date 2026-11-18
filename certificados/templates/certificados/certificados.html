@@ -1,0 +1,33 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Certificados{% endblock %}
+{% block content %}
+  <h1>Certificados de carbono</h1>
+  <p>Solo los emite la aprobación de una medición (nadie los crea, modifica ni borra a mano).
+     <a href="{% url 'certificados_verificar' %}">Verificar un certificado</a></p>
+  <form method="get">
+    <label>Estado
+      <select name="estado">
+        <option value="">Todos</option>
+        {% for valor, nombre in estados %}<option value="{{ valor }}"{% if valor == estado %} selected{% endif %}>{{ nombre }}</option>{% endfor %}
+      </select>
+    </label>
+    <button type="submit">Filtrar</button>
+  </form>
+  <table>
+    <thead><tr><th>Certificado</th><th>Finca / parcela</th><th>Período</th><th>t CO₂</th><th>Estado</th><th>Emitido</th></tr></thead>
+    <tbody>
+      {% for fila in filas %}
+        <tr>
+          <td><a href="{% url 'certificados_certificado' fila.c.pk %}">{{ fila.c.pk|stringformat:"s"|slice:":8" }}</a></td>
+          <td>{{ fila.finca.nombre }} / {{ fila.parcela.codigo }}</td>
+          <td>{{ fila.periodo.nombre }}</td>
+          <td>{{ fila.c.toneladas_co2 }}</td>
+          <td>{{ fila.c.estado }}</td>
+          <td>{{ fila.c.emitido_en|date:"Y-m-d H:i" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6">No hay certificados para mostrar.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

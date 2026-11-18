@@ -20,5 +20,9 @@ urlpatterns = [
     path("gestion/", include("cuentas.urls")),
     path("gestion/", include("catalogo.urls")),
     path("gestion/", include("mediciones.urls")),
+    path("gestion/", include("certificados.urls")),
+    path("gestion/", include("bitacora.urls")),
+    path("gestion/", include("exportaciones.urls")),
+    path("certificados/", include("certificados.urls_publicas")),  # verificación pública y clave pública
     path("admin/", admin.site.urls),
 ]

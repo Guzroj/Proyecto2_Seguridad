@@ -57,6 +57,9 @@ INSTALLED_APPS = [
     "cuentas",
     "catalogo",
     "mediciones",
+    "bitacora",       # O8: bitácora encadenada de solo inserción (Persona 4)
+    "certificados",   # O6: certificados firmados con Ed25519 (Persona 4)
+    "exportaciones",  # X: exportaciones del auditor con H3 y marca de agua (Persona 4)
 ]
 
 # Modelo de usuario propio: fijado desde la primera migración (no se puede cambiar después).
@@ -75,6 +78,7 @@ MIDDLEWARE = [
     "cuentas.errores.ErroresMiddleware",  # 403 / 404 / 400 / 409 de las pantallas (antes del reto RG6)
     "cuentas.mfa.ExigirMFAMiddleware",  # TC/VF/GC/AC sin TOTP solo pueden activarlo; reto RG6
     "autorizacion.pep.PeticionActualMiddleware",  # el PEP lee la edad del segundo factor de la petición
+    "bitacora.servicios.BitacoraPendientesMiddleware",  # negaciones que quedaron en una transacción revertida
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
@@ -159,6 +163,16 @@ MFA_CLAVE_CIFRADO = os.environ.get("MFA_CLAVE_CIFRADO", "")
 MFA_REAUTENTICACION_SEGUNDOS = 300  # RG6: segundo factor hace <= 5 min
 
 # ---------------------------------------------------------------------------
+# Certificados firmados (O6, Persona 4): Ed25519. La clave privada es un secreto
+# (Secret Manager -> variable de entorno en Cloud Run; .env en local). Sin ella no
+# se emite ningún certificado y la aprobación se revierte (fallo cerrado).
+# Las huellas confiables son públicas: las claves que Verdeazul reconoce como suyas
+# (la actual y las anteriores tras una rotación). Ver certificados/firma.py.
+# ---------------------------------------------------------------------------
+CERTIFICADO_CLAVE_PRIVADA = os.environ.get("CERTIFICADO_CLAVE_PRIVADA", "")
+CERTIFICADO_CLAVES_CONFIABLES = os.environ.get("CERTIFICADO_CLAVES_CONFIABLES", "")
+
+# ---------------------------------------------------------------------------
 # Sesión y cookies (Arquitectura §4.4). Inactividad por rol y máximo absoluto:
 # cuentas.sesion.ControlSesionMiddleware.
 # ---------------------------------------------------------------------------
@@ -200,13 +214,17 @@ VERDEAZUL_GANCHOS = {
     # Motor real: el PEP (Django) consulta al servicio autorizador por HTTP, con fallo cerrado.
     "autorizar": "autorizacion.cliente.autorizar",
     "usuarios_con_rol": "cuentas.roles.usuarios_con_rol",
-    # "registrar_evento": "bitacora.servicios.registrar_evento",
-    # "on_medicion_aprobada": "certificados.servicios.emitir",
+    # Persona 4: bitácora persistente encadenada (O8) y emisión firmada del certificado (O6).
+    "registrar_evento": "bitacora.servicios.registrar_evento",
+    "on_medicion_aprobada": "certificados.servicios.emitir",
 }
 # Solo aplica si se quita "autorizar" de VERDEAZUL_GANCHOS (p. ej. en pruebas de un
 # servicio aislado del motor): la implementación provisional niega todo salvo que
 # esto se active explícitamente. Ya no depende de DEBUG.
 AUTORIZACION_PROVISIONAL_PERMISIVA = False
+
+# Pruebas: si no hay clave de certificados configurada, usa una efímera solo para la corrida.
+TEST_RUNNER = "verdeazul.pruebas.Runner"
 
 LOGGING = {
     "version": 1,

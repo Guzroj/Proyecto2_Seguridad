@@ -1,0 +1,35 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Verificar certificado{% endblock %}
+{% block content %}
+  <h1>Verificar un certificado de carbono</h1>
+  <p>Suba el archivo del certificado (JSON). Se comprueba la firma Ed25519 con la clave incrustada
+     y que esa clave sea una de las publicadas por Verdeazul. No hace falta una cuenta.</p>
+  <form method="post" enctype="multipart/form-data">{% csrf_token %}
+    <p><label>Archivo <input type="file" name="archivo" accept=".json,application/json"></label></p>
+    <p><label>o pegue el contenido<br><textarea name="texto" rows="8" cols="80"></textarea></label></p>
+    <button type="submit">Verificar</button>
+  </form>
+  {% if limitado %}
+    <p><strong>Demasiadas verificaciones seguidas.</strong> Espere un momento e intente de nuevo.</p>
+  {% endif %}
+  {% if resultado %}
+    <h2>Resultado</h2>
+    {% if resultado.valido %}
+      <p><strong>VÁLIDO.</strong> La firma corresponde al contenido y la clave es de Verdeazul.</p>
+      {% if registro %}
+        <p><strong>Estado en el registro de Verdeazul:</strong> {{ registro.estado }}
+          {% if registro.estado == "REVOCADO" %} (revocado el {{ registro.revocado_en|date:"Y-m-d H:i" }}{% if registro.reemplazado_por %}; lo reemplaza {{ registro.reemplazado_por }}{% endif %}). Un certificado revocado no está vigente.{% endif %}</p>
+      {% endif %}
+    {% else %}
+      <p><strong>NO VÁLIDO.</strong></p>
+      <ul>{% for e in resultado.errores %}<li>{{ e }}</li>{% endfor %}</ul>
+    {% endif %}
+    <p>Firma íntegra: {{ resultado.integro|yesno:"sí,no" }} · Clave de Verdeazul: {{ resultado.confiable|yesno:"sí,no" }}</p>
+    <p>Huella de la clave del documento: <code>{{ resultado.huella_clave|default:"—" }}</code></p>
+    {% if contenido_json %}<details><summary>Contenido</summary><pre>{{ contenido_json }}</pre></details>{% endif %}
+  {% endif %}
+  <h2>Claves de Verdeazul</h2>
+  <ul>{% for h in huellas %}<li><code>{{ h }}</code></li>{% empty %}<li>No hay claves configuradas.</li>{% endfor %}</ul>
+  <p>También en <a href="{% url 'certificados_clave_publica' %}">/certificados/clave-publica/</a>. Para verificar sin este sitio:
+     <code>python certificados/formato.py certificado.json --huella &lt;huella&gt;</code></p>
+{% endblock %}

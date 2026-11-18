@@ -1,0 +1,20 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Evento #{{ e.secuencia }}{% endblock %}
+{% block content %}
+  <h1>Evento #{{ e.secuencia }}</h1>
+  <table>
+    <tr><th>Momento (servidor, UTC)</th><td>{{ e.momento|date:"Y-m-d H:i:s.u" }}</td></tr>
+    <tr><th>Actor</th><td>{% if e.actor_id %}{{ e.actor_nombre }} (cuenta #{{ e.actor_id }}){% else %}proceso del sistema{% endif %}</td></tr>
+    <tr><th>Roles</th><td>{{ e.roles|join:", "|default:"—" }}</td></tr>
+    <tr><th>Origen</th><td>{{ e.origen|default:"—" }}</td></tr>
+    <tr><th>Acción</th><td>{{ e.accion }}</td></tr>
+    <tr><th>Recurso</th><td>{{ e.recurso_tipo }} {{ e.recurso_id }}</td></tr>
+    <tr><th>Resultado</th><td>{{ e.resultado }}</td></tr>
+    <tr><th>Detalle</th><td>{{ e.detalle|default:"—" }}</td></tr>
+    <tr><th>Hash anterior</th><td><code>{{ e.hash_anterior }}</code></td></tr>
+    <tr><th>Hash</th><td><code>{{ e.hash }}</code></td></tr>
+  </table>
+  {% if antes %}<h2>Antes</h2><pre>{{ antes }}</pre>{% endif %}
+  {% if despues %}<h2>Después</h2><pre>{{ despues }}</pre>{% endif %}
+  <p><a href="{% url 'bitacora_eventos' %}">Volver a la bitácora</a></p>
+{% endblock %}

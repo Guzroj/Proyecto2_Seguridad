@@ -4,9 +4,10 @@ import os
 import httpx
 from django.conf import settings
 
+from nucleo import ganchos
 from nucleo.errores import AccesoDenegado, FueraDeAlcance, ReautenticacionRequerida
 
-from . import pep
+from . import matriz, pep
 
 log = logging.getLogger("verdeazul.autorizacion")
 
@@ -80,12 +81,36 @@ def _decidir(usuario, accion: str, recurso=None, contexto: dict | None = None) -
     resultado = decision.get("resultado")
     motivo = str(decision.get("motivo") or "Acceso denegado.")[:300]
     if resultado == "CONCEDE":
+        _registrar_lectura(usuario, accion, recurso)
         return decision
     if resultado == "FUERA_DE_ALCANCE":
         raise FueraDeAlcance("No encontrado.")
     if resultado == "REAUTENTICAR":
         raise ReautenticacionRequerida(motivo)
     raise AccesoDenegado(motivo)
+
+
+# RG4: toda lectura concedida de O1, O4, O6 y O8 se registra en la bitácora; si el evento no
+# puede registrarse, la lectura se niega. (Las escrituras las registran los servicios, las
+# exportaciones su propio servicio y las negaciones nucleo.transicion y autorizar_lectura.)
+LECTURAS_RG4 = frozenset({matriz.O1A, matriz.O1B, matriz.O4, matriz.O6, matriz.O8})
+
+
+def _registrar_lectura(usuario, accion: str, recurso) -> None:
+    objeto, operacion = matriz.ACCIONES.get(accion, (None, None))
+    if operacion != "L" or objeto not in LECTURAS_RG4:
+        return
+    es_modelo = hasattr(recurso, "pk") and hasattr(recurso, "_meta")
+    try:
+        ganchos.registrar_evento(
+            actor=usuario, accion=accion,
+            recurso_tipo=recurso._meta.model_name if es_modelo else accion.split(":")[0],
+            recurso_id=str(recurso.pk) if es_modelo else "", resultado="CONCEDIDO",
+            detalle="lista" if accion.endswith(":listar") else "",
+        )
+    except Exception as exc:
+        log.warning("No se pudo registrar la lectura %s en la bitácora: %s", accion, type(exc).__name__)
+        raise AccesoDenegado("No se pudo registrar la lectura en la bitácora: se niega (RG4).") from exc
 
 
 def autorizar(usuario, accion: str, recurso=None, contexto: dict | None = None) -> None:
