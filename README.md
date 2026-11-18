@@ -533,6 +533,16 @@ describe el estado final: **25 tablas con RLS y FORCE**, **5 metadatos de Django
 4. Publicar la huella (aquí y en `/certificados/clave-publica/`). Al rotar, poner las huellas viejas y la
    nueva en `CERTIFICADO_CLAVES_CONFIABLES` (separadas por coma) para que los certificados viejos sigan verificando.
 
+**Huella publicada de la clave de producción** (SHA-256 de la clave pública Ed25519, fijada en
+`CERTIFICADO_CLAVES_CONFIABLES` en `deploy.yml`):
+
+```
+14428e8d992fa57dfb65003add2e7332a1c2372b5bd584b7b942fec7dba907c2
+```
+
+Verificar un certificado de producción sin el sitio:
+`python certificados/formato.py certificado.json --huella 14428e8d992fa57dfb65003add2e7332a1c2372b5bd584b7b942fec7dba907c2`.
+
 Las pruebas no necesitan la clave: `verdeazul/pruebas.py` usa una efímera si no hay una configurada.
 
 ### 6.3 Decisiones y desviaciones

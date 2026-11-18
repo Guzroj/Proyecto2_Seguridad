@@ -155,8 +155,12 @@ segundo factor) quedan en la bitácora.
 
 La clave de firma se genera con `manage.py generar_clave_certificados`; no se escribe en la base, la
 bitácora, los registros ni el repositorio; la huella (pública) se publica. Las pruebas usan una clave
-efímera (`verdeazul/pruebas.py`). **PENDIENTE:** crear `verdeazul-certificado-clave`, dar acceso a
-`verdeazul-app` y capturar la configuración.
+efímera (`verdeazul/pruebas.py`). El secreto `verdeazul-certificado-clave` lo creó el responsable de
+despliegue con una clave propia de producción, distinta de la de desarrollo. Su huella publicada es
+`14428e8d992fa57dfb65003add2e7332a1c2372b5bd584b7b942fec7dba907c2` y queda fijada en
+`CERTIFICADO_CLAVES_CONFIABLES` en `deploy.yml`, de modo que la confianza no depende de lo que diga
+la base ni el documento. **PENDIENTE:** capturar la configuración del secreto y del permiso de
+`verdeazul-app`, y comprobar en producción que `/certificados/clave-publica/` muestra esta misma huella.
 
 ## 4. Seguridad heredada de la plataforma — **PENDIENTE (responsable de despliegue)**
 
