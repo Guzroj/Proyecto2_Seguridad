@@ -1,0 +1,454 @@
+% =====================================================================
+% CE-1115 Seguridad de la Información · Proyecto Parte 2 · Grupo 05
+% Informe de implementación y despliegue seguro (Verdeazul Carbono S.A.)
+% Compilar: pdflatex P2_Informe_Implementacion_Grupo5.tex (dos pasadas)
+% La tabla de cobertura (cobertura_filas.tex) se genera desde
+% docs/cobertura-matriz.md con: python generar_cobertura.py ../cobertura-matriz.md cobertura_filas.tex
+% =====================================================================
+\documentclass[10pt,letterpaper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[spanish,es-noshorthands,es-tabla]{babel}
+\usepackage[top=2.0cm,bottom=2.0cm,left=2.1cm,right=2.1cm,headsep=0.5cm,footskip=0.9cm]{geometry}
+\usepackage{microtype}
+\usepackage{booktabs,tabularx,array,longtable}
+\usepackage[table]{xcolor}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{float}
+\usepackage{fancyvrb}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds,calc}
+\usepackage{url}
+\def\UrlBreaks{\do\/\do\_\do\:\do\.\do\-\do\,}
+\usepackage[hidelinks]{hyperref}
+
+% ---------- Estilo (mismo que los entregables de la Parte 1) ----------
+\definecolor{verde}{HTML}{1F5E3B}
+\definecolor{gris}{HTML}{5A5A5A}
+\definecolor{fondo}{HTML}{F2F5F3}
+\definecolor{zona0}{HTML}{FBE9E7}
+\definecolor{zona2}{HTML}{E8F1FB}
+\definecolor{zona3}{HTML}{E9F5EC}
+\definecolor{zona4}{HTML}{F1EAF7}
+\definecolor{aviso}{HTML}{FFF4E0}
+
+\titleformat{\section}{\large\bfseries}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.7em}{}
+\titlespacing*{\section}{0pt}{10pt}{4pt}
+\titlespacing*{\subsection}{0pt}{7pt}{3pt}
+
+\setlength{\parskip}{3pt}
+\setlength{\parindent}{0pt}
+\setlength{\emergencystretch}{3em}
+\setlength{\textfloatsep}{8pt plus 2pt minus 2pt}
+\setlength{\floatsep}{6pt plus 2pt minus 2pt}
+\setlength{\intextsep}{6pt plus 2pt minus 2pt}
+\setlength{\LTpre}{3pt}\setlength{\LTpost}{3pt}
+\setlist{itemsep=1pt,topsep=2pt,leftmargin=1.3em}
+\captionsetup{font=small,labelfont=bf,skip=3pt}
+\renewcommand{\arraystretch}{1.12}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{gris}CE-1115 · Proyecto Parte 2 · Grupo 05}
+\fancyhead[R]{\small\color{gris}Informe de implementación y despliegue}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+\newcommand{\cod}[1]{\texttt{#1}}
+\makeatletter\newcommand{\entrada}[1]{\@@input #1 }\makeatother
+\newcommand{\pendiente}[1]{\par\smallskip\noindent\colorbox{aviso}{\parbox{\dimexpr\linewidth-2\fboxsep}{\small #1}}\par\smallskip}
+\fvset{fontsize=\scriptsize,frame=single,rulecolor=\color{gris!50},framesep=2pt,xleftmargin=2pt,xrightmargin=2pt}
+
+\begin{document}
+
+% =====================================================================
+% PORTADA
+% =====================================================================
+\begin{titlepage}
+\centering
+{\large Instituto Tecnológico de Costa Rica\par}
+{\large Escuela de Ingeniería en Computadores\par}
+\vspace{0.3cm}
+{\large CE-1115 Seguridad de la Información\par}
+\vspace{2.0cm}
+{\rule{\linewidth}{1pt}\par}
+\vspace{0.4cm}
+{\normalsize Proyecto · Parte 2 — Implementación y despliegue seguro\par}
+\vspace{0.3cm}
+{\Huge\bfseries Informe de implementación\par}
+\vspace{0.3cm}
+{\large Entregable 3\par}
+\vspace{0.3cm}
+{\rule{\linewidth}{1pt}\par}
+\vspace{0.6cm}
+{\large Plataforma de certificación de captura de carbono\\ Verdeazul Carbono S.A.\par}
+\vspace{1.8cm}
+{\large\bfseries Grupo 05\par}
+\vspace{0.4cm}
+\begin{tabular}{ll}
+\toprule
+\textbf{Integrante} & \textbf{Carné}\\
+\midrule
+Andrés Uriza Lazo & 2021466844\\
+Gabriel Guzmán Rojas & 2022090213\\
+Saray Mariana Rojas Rojas & 2020076936\\
+Sebastián Hernández Bonilla & 2022093651\\
+\bottomrule
+\end{tabular}
+\vspace{1.4cm}
+
+{\small
+\begin{tabular}{@{}ll@{}}
+Repositorio & \url{https://github.com/Guzroj/Proyecto2_Seguridad} (rama \cod{develop}, commit \cod{f1ca583})\\
+URL pública & \url{https://verdeazul-444812071990.us-east1.run.app}\\
+\end{tabular}\par}
+\vfill
+{Profesor: MSc. Andrés Vargas Rivera\par}
+{II Semestre 2026\par}
+{19 de noviembre de 2026\par}
+\end{titlepage}
+
+% =====================================================================
+\section{Arquitectura desplegada}
+\label{sec:arquitectura}
+% =====================================================================
+
+La Parte 1 diseñó una instalación local con cinco zonas de red, OPA como motor de decisión, OpenBao para secretos y una base de bitácora separada. La consigna de la Parte 2 fija Cloud Run, Neon, Secret Manager y Artifact Registry, así que conservamos la \emph{separación de responsabilidades} y las \emph{fronteras de confianza} del diseño y cambiamos la infraestructura que las materializa (sección~\ref{sec:desviaciones}). La Figura~\ref{fig:arquitectura} muestra lo que define el \emph{pipeline} \path{.github/workflows/deploy.yml} y documenta el README: dos servicios de Cloud Run con imágenes distintas, tres \emph{jobs}, Secret Manager y una base PostgreSQL en Neon.
+
+\begin{figure}[ht]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+  font=\sffamily\scriptsize,
+  caja/.style={draw=gris, rounded corners=2pt, fill=white, align=center, inner sep=3pt, text width=#1},
+  caja/.default=3.3cm,
+  flecha/.style={-{Stealth[length=2.2mm]}, thick, color=black!75},
+  etq/.style={font=\sffamily\tiny, fill=white, inner sep=1pt, align=center},
+  zona/.style={draw=gris, dashed, rounded corners=4pt, inner sep=7pt}
+]
+% --- Zona no confiable
+\node[caja=2.5cm, fill=zona0] (nav) at (-0.3,3.6) {\textbf{Navegador}\\ (usuarios de los 6 roles)\\ no confiable};
+\node[caja=2.5cm, fill=zona0] (comp) at (-0.3,0.9) {\textbf{Comprador externo}\\ \texttt{formato.py} + huella\\ publicada};
+\node[caja=2.5cm, fill=zona0] (gh) at (-0.3,6.4) {\textbf{GitHub Actions}\\ WIF, sin claves JSON};
+% --- Google Cloud
+\node[caja=2.6cm, fill=zona2] (gfe) at (3.8,3.6) {\textbf{Google Front End}\\ TLS de \texttt{*.run.app}\\ HTTP\,$\rightarrow$\,HTTPS};
+\node[caja=4.3cm, fill=zona3] (app) at (8.2,3.6) {\textbf{Cloud Run \texttt{verdeazul}} (público)\\ imagen \texttt{app}: Django 5.2 + gunicorn\\ PEP, servicios de dominio, certificados,\\ bitácora · SA \texttt{verdeazul-app} · uid 10001};
+\node[caja=4.3cm, fill=zona4] (pdp) at (8.2,0.9) {\textbf{Cloud Run \texttt{verdeazul-autorizador}}\\ (privado, sin \texttt{allUsers})\\ imagen \texttt{autorizador}: FastAPI, PDP\\ matriz, C1--C22, H1--H4 · sin base ni secretos};
+\node[caja=2.95cm, fill=zona2] (ar) at (3.8,6.4) {\textbf{Artifact Registry}\\ \texttt{verdeazul/app}\\ \texttt{verdeazul/autorizador}\\ tags \texttt{v1.0.0}, \texttt{sha-<commit>}};
+\node[caja=3.1cm, fill=zona2] (sm) at (7.4,6.4) {\textbf{Secret Manager}\\ 7 secretos (Tabla~\ref{tab:secretos})\\ \texttt{secretAccessor} por SA};
+\node[caja=3.0cm, fill=zona3] (jobs) at (11.15,6.4) {\textbf{Cloud Run Jobs}\\ \texttt{verdeazul-migrate} (dueño)\\ \texttt{tarea-diaria} · \texttt{sellar-bitacora}\\ (Cloud Scheduler, OIDC)};
+% --- Neon
+\node[caja=2.7cm, fill=zona3, minimum height=3.9cm] (neon) at (15.0,3.2) {\textbf{Neon PostgreSQL 18}\\ \texttt{aws-us-east-1}, base \texttt{neondb}\\[3pt] rol \texttt{app\_runtime}: no dueño, \texttt{NOBYPASSRLS}\\[3pt] RLS con \texttt{FORCE}\\ disparadores (H4, C2, C3, C13, C19, C20, RG1)\\[3pt] bitácora encadenada SHA-256\\ certificados};
+% --- Zonas
+\begin{scope}[on background layer]
+\node[zona, fill=gray!4, fit=(gfe)(app)(pdp)(ar)(sm)(jobs), label={[font=\sffamily\scriptsize\bfseries, anchor=south west]north west:Google Cloud · proyecto \texttt{project-4d85c806-\ldots} · región \texttt{us-east1}}] (gcp) {};
+\node[zona, fill=gray!4, fit=(neon), label={[font=\sffamily\scriptsize\bfseries]south:Neon (tercero)}] {};
+\end{scope}
+% --- Flujos
+\draw[flecha] (nav) -- node[etq, above=1pt]{HTTPS} node[etq,below=1pt]{F1} (gfe);
+\draw[flecha] (gfe) -- node[etq, above=1pt]{petición} node[etq,below=1pt]{F2} (app);
+\draw[flecha] (comp.east) -- ++(1.2,0) |- node[etq, pos=0.25, right=1pt]{HTTPS\\ \texttt{/certificados/verificar/}} ($(gfe.south)+(0,0)$);
+\draw[flecha] (app.south) -- node[etq, right=2pt, text width=3.1cm, align=left]{F3 \texttt{POST /autorizar}: ids y estados,\\ token OIDC (\texttt{run.invoker})} (pdp.north);
+\draw[flecha] (app.east) -- node[etq, above=1pt]{F4 TLS} node[etq, below=1pt]{\texttt{sslmode=require}} (neon.west |- app.east);
+\draw[flecha] (jobs.east) -| node[etq, pos=0.3, above=1pt]{TLS, rol dueño o runtime} (neon.north);
+\draw[flecha] (sm.south) -- node[etq, right=1pt]{F5 variables de\\ entorno al iniciar} ($(app.north)+(-0.8,0)$);
+\draw[flecha] (sm.east) -- (jobs.west);
+\draw[flecha] (gh) -- node[etq, above=1pt]{\emph{build} y \emph{push}} (ar);
+\draw[flecha, dashed] (ar.south) |- node[etq, pos=0.3, left=1pt]{despliegue por\\ \texttt{sha-<commit>}} ($(app.west)+(0,0.55)$);
+\end{tikzpicture}}
+\caption{Arquitectura definida por \cod{deploy.yml} y el README (§1). F1--F5: fronteras de confianza (Tabla~\ref{tab:fronteras}).}
+\label{fig:arquitectura}
+\end{figure}
+
+\textbf{Componentes e imágenes.} Cada componente tiene su propio \cod{Dockerfile}. La imagen \cod{app} contiene Django, los servicios de dominio y el PEP; la imagen \cod{autorizador} copia solo el paquete \path{autorizacion/} y no incluye Django ni \cod{psycopg}, de modo que el PDP no puede leer la base aunque se comprometa. Ambas parten de \cod{python:3.12-slim} y terminan con \cod{USER app} (uid 10001): ningún contenedor corre como \emph{root}. En cada \emph{push} a \cod{main}, el \emph{pipeline} se autentica con \emph{Workload Identity Federation}, construye las dos imágenes con las etiquetas \cod{v1.0.0} y \cod{sha-<hash corto>}, ejecuta las migraciones en un \emph{job} con el rol dueño y despliega ambos servicios por la etiqueta \cod{sha-}, que ata cada revisión a un commit. La etiqueta \cod{v1.0.0} se vuelve a aplicar en cada \emph{push} a \cod{main} salvo que se publique un tag \cod{v*}; por eso la trazabilidad la da \cod{sha-}, no \cod{v1.0.0} \cite{gcp-ar-tags}.
+
+\begin{table}[ht]
+\centering\footnotesize
+\caption{Fronteras de confianza implementadas y qué se valida en cada cruce.}
+\label{tab:fronteras}
+\begin{tabularx}{\linewidth}{@{}lP{3.0cm}Y@{}}
+\toprule
+& \textbf{Cruce} & \textbf{Qué se valida y dónde}\\
+\midrule
+F1 & Internet $\rightarrow$ Cloud Run & TLS gestionado por Google; HTTP redirige a HTTPS \cite{gcp-run-https}. Django añade HSTS de un año, \cod{SECURE\_SSL\_REDIRECT} y cookies \cod{Secure} (\path{verdeazul/settings.py}).\\
+F2 & Plataforma $\rightarrow$ Django & Sesión del lado del servidor, token CSRF, formularios de lista blanca; el sujeto de RLS se fija desde la sesión, nunca desde la petición (\path{cuentas/rls.py}).\\
+F3 & Django (PEP) $\rightarrow$ autorizador (PDP) & Cloud Run IAM exige un token OIDC con audiencia igual a la URL del motor y solo \cod{verdeazul-app} tiene \cod{run.invoker} \cite{gcp-run-s2s}. El PDP valida el esquema con Pydantic (\cod{extra="forbid"}, 422 si no cumple) y nunca recibe datos personales.\\
+F4 & Django $\rightarrow$ Neon & TLS obligatorio (\cod{ssl\_require} fuera de \cod{DEBUG}); rol \cod{app\_runtime} sin \cod{BYPASSRLS}; RLS con \cod{FORCE}; disparadores e índices únicos.\\
+F5 & Secret Manager $\rightarrow$ contenedores & Cada \emph{service account} solo tiene \cod{secretAccessor} sobre los secretos que usa; el servicio del autorizador no tiene ninguno.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Flujo de una petición autenticada} (un VF aprueba una medición). (1)~El navegador envía \cod{POST /gestion/mediciones/<id>/aprobar/} por HTTPS con la cookie \cod{\_\_Host-vz\_sesion} y el token CSRF. (2)~\cod{ControlSesionMiddleware} valida la sesión registrada (inactividad por rol, máximo de 10~h) y \cod{ContextoRLSMiddleware} fija \cod{app.usuario\_id} en la conexión. (3)~\path{mediciones/services.py:aprobar_medicion} bloquea la medición con \cod{SELECT \ldots{} FOR UPDATE}. (4)~El PEP (\path{autorizacion/pep.py}) lee de la base los roles vigentes, el estado de la medición y del período, los actores, los técnicos y la edad del segundo factor, y \path{autorizacion/cliente.py} consulta al motor con el token OIDC; si el motor no responde en 3~s o responde algo inválido, se niega (RG5). (5)~El motor aplica C2, H4 y la reautenticación de 300~s; si niega, se responde 403, 404 fuera de alcance o un reto de segundo factor, y la negación queda en la bitácora. (6)~El servicio revalida el estado y la independencia; el \cod{UPDATE} pasa por el disparador de \cod{mediciones/0003}, que vuelve a comprobar H4 y C2. (7)~En la misma transacción se escriben los eventos encadenados y \path{certificados/servicios.py:emitir} firma el certificado; si algo falla, no queda ni la aprobación ni el certificado.
+
+\pendiente{\textbf{Estado del despliegue comprobado el 19-nov-2026 a las 13:43 (UTC$-$6).} La URL pública responde por HTTPS con HSTS y redirige HTTP a HTTPS (Figura~\ref{fig:https}), pero la revisión en ejecución no corresponde a \cod{develop}: solo expone \cod{/admin/} y las rutas \cod{/cuentas/}, \cod{/gestion/} y \cod{/certificados/} devuelven 404. El README registra como imagen desplegada \cod{manual-202611121557} y \cod{main} está 39 commits detrás de \cod{develop}. Como el \emph{pipeline} se dispara con \emph{push} a \cod{main}, falta fusionar \cod{develop} en \cod{main}, confirmar que el flujo termina sin errores y anotar aquí la etiqueta \cod{sha-} publicada. Hasta entonces, las afirmaciones sobre el comportamiento del sistema se respaldan con el código y las pruebas, no con la instancia pública.}
+
+% =====================================================================
+\section{Controles de seguridad implementados}
+\label{sec:controles}
+% =====================================================================
+
+La Tabla~\ref{tab:controles} relaciona cada control obligatorio con el problema que resuelve, el código que lo implementa y la prueba automatizada que lo verifica. Todas las pruebas citadas se ejecutaron el 19-nov-2026 en Docker Compose (PostgreSQL 17, motor y Django en contenedores separados): \textbf{663 pruebas correctas y 5 omitidas} en la imagen de Django (las 5 omitidas son las de FastAPI, que no está instalado en esa imagen) y \textbf{109 correctas y 7 omitidas} en el contenedor del motor (Figura~\ref{fig:pruebas}).
+
+\begin{small}
+\setlength{\tabcolsep}{4pt}
+\begin{longtable}{@{}P{2.2cm}P{3.6cm}P{6.1cm}P{4.6cm}@{}}
+\caption{Controles implementados: problema, implementación y verificación.}\label{tab:controles}\\
+\toprule
+\footnotesize\textbf{Control} & \footnotesize\textbf{Problema que aborda} & \footnotesize\textbf{Implementación (archivo)} & \footnotesize\textbf{Verificación}\\
+\midrule
+\endfirsthead
+\toprule
+\footnotesize\textbf{Control} & \footnotesize\textbf{Problema que aborda} & \footnotesize\textbf{Implementación (archivo)} & \footnotesize\textbf{Verificación}\\
+\midrule
+\endhead
+\multicolumn{4}{@{}l}{\footnotesize\textbf{Autenticación y sesiones}}\\
+\footnotesize Contraseñas & \footnotesize Robo de la tabla de cuentas y ataque de diccionario en GPU. & \footnotesize Argon2id primero en \cod{PASSWORD\_HASHERS} (sal aleatoria por \emph{hash}); PBKDF2 solo para verificar \emph{hashes} heredados, que se actualizan al ingresar; mínimo 12 caracteres y rechazo de contraseñas comunes (\path{verdeazul/settings.py}). & \footnotesize \path{cuentas/test_login.py::ContrasenasTests} comprueba el prefijo \cod{argon2\$argon2id\$}.\\
+\footnotesize Segundo factor & \footnotesize Contraseña filtrada; sesión robada usada para aprobar. & \footnotesize TOTP y códigos de recuperación de \cod{allauth.mfa}, obligatorio para TC, VF, GC y AC (\path{cuentas/mfa.py}); secretos TOTP cifrados con Fernet y \cod{MFA\_CLAVE\_CIFRADO} (\path{cuentas/adaptador.py}); AP, DV y AU exigen un factor de hace $\le$300~s (RG6). & \footnotesize \path{cuentas/test_mfa.py}: \cod{CifradoTests}, \cod{ExigirMFATests}, \cod{RetoRG6Tests}.\\
+\footnotesize Sesiones & \footnotesize Fijación, robo de cookie y permisos que sobreviven a una baja. & \footnotesize Sesiones en PostgreSQL con cookie \cod{\_\_Host-vz\_sesion} (\cod{Secure}, \cod{HttpOnly}, \cod{SameSite=Lax}); inactividad de 15~min (GC, AC, AE) o 30~min (TC, VF, PF) y 10~h absolutas; los roles se leen en cada petición (\path{cuentas/sesion.py}). & \footnotesize \path{cuentas/test_sesion.py}: \cod{InactividadTests}, incluida \path{test_roles_se_leen_en_cada_peticion}\\
+\multicolumn{4}{@{}l}{\footnotesize\textbf{Autorización}}\\
+\footnotesize Modelo híbrido y motor & \footnotesize IDOR o acción ejecutada por quien solo debía ver el botón oculto. & \footnotesize RBAC con la matriz como datos (\path{autorizacion/matriz.py}); condiciones ABAC C1--C22 (\path{condiciones.py}); HBAC H1--H3 (\path{hbac.py}); regla única en \path{reglas.py:decidir} con denegación por defecto (RG1), 404 fuera de alcance (RG3) y fallo cerrado (RG5). El PEP llama al motor en cada servicio, pantalla y lista. & \footnotesize \path{autorizacion/test_cobertura.py::CeldaPorCeldaTests} recorre 474 combinaciones rol--acción en el motor real; \path{test_cliente.py} prueba el fallo cerrado.\\
+\footnotesize Separación de funciones & \footnotesize Quien mide aprueba; una persona se otorga un rol o reabre su propia enmienda. & \footnotesize C2 (el VF no es actor, técnico ni dueño), C3 (enmienda resuelta por otro GC), C7 (pares de roles excluyentes y segunda aprobación de GC y AE), C14, C17 y C22; verificador nuevo en cada envío (D4). & \footnotesize \cod{C2Tests}, \cod{C3Tests}, \cod{C7Tests} (\path{test_condiciones.py}); \path{cuentas/test_roles_c7.py}.\\
+\footnotesize RLS & \footnotesize Una consulta sin filtro o un error de la aplicación que devuelva filas ajenas. & \footnotesize 25 tablas con RLS y \cod{FORCE} (\path{db/roles_rls.sql} y migraciones \cod{cuentas/0004}--\cod{0024}); sujeto y fase por petición en \path{cuentas/rls.py}; \cod{app\_runtime} sin \cod{BYPASSRLS}. & \footnotesize \path{cuentas/test_rls_*.py}; \path{MetadatosTests.test_estado_de_rls_por_tabla} fija el estado de cada tabla.\\
+\multicolumn{4}{@{}l}{\footnotesize\textbf{Integridad}}\\
+\footnotesize Disparadores y restricciones & \footnotesize Los dos incidentes de la carta: medición cambiada tras aprobarse y certificado doble. & \footnotesize \cod{catalogo/0003} y \cod{mediciones/0003}: H4 (aprobada o de período cerrado no cambia), máquina de estados, C13, C19, C20 y ningún \cod{DELETE} (RG1). Índice único parcial \cod{certificado\_vigente} y disparadores de \cod{certificados/0002}. & \footnotesize \path{mediciones/test_disparadores.py} y \cod{DisparadoresTests} de certificados atacan con SQL directo como dueño de la base.\\
+\footnotesize Enmiendas & \footnotesize Corregir sin borrar la historia. & \footnotesize C11 y C3 crean una versión enlazada (\cod{version\_de}); la original no cambia; P2 revoca y reemite el certificado solo si cambian las toneladas. & \footnotesize \cod{EnmiendaTests}; \path{certificados/test_certificados.py::P2Tests}.\\
+\multicolumn{4}{@{}l}{\footnotesize\textbf{Auditoría}}\\
+\footnotesize Bitácora encadenada & \footnotesize Quién hizo qué, incluso ante quien puede escribir en la base. & \footnotesize \cod{bitacora\_evento}: un disparador \cod{BEFORE INSERT} con candado consultivo fija secuencia, hora y $h_n=\mathrm{SHA256}(h_{n-1}\,\|\,\mathrm{can}(e_n))$; \cod{UNIQUE(hash\_anterior)}; UPDATE y DELETE rechazados aun al dueño; \cod{app\_runtime} sin UPDATE, DELETE ni TRUNCATE. Las negaciones se escriben fuera de la transacción revertida; las lecturas de O1, O4, O6 y O8 se registran (RG4). Sellos horarios firmados con Ed25519 (\path{bitacora/sellos.py}). & \footnotesize \path{bitacora/test_bitacora.py}: \cod{CadenaTests}, \path{NegacionesFueraDelRollbackTests}, \cod{SellosTests} (reescritura completa y corte del final detectados).\\
+\multicolumn{4}{@{}l}{\footnotesize\textbf{Certificados}}\\
+\footnotesize Firma Ed25519 & \footnotesize Un comprador debe confiar en el documento sin acceso a la base. & \footnotesize Emisión automática en la transacción de aprobación (gancho \cod{on\_medicion\_aprobada}); JSON canónico con prefijo de dominio firmado con Ed25519; la clave pública y su huella viajan en el documento; la privada solo existe en la variable de entorno (\path{certificados/firma.py}). La verificación separa \emph{íntegro} de \emph{clave de Verdeazul} (huella en \cod{CERTIFICADO\_CLAVES\_CONFIABLES}); el verificador independiente es \path{certificados/formato.py}. & \footnotesize \cod{EmisionTests}, \cod{ManipulacionTests} (contenido, firma, re-firma con otra clave, claves duplicadas), \cod{VerificacionPublicaTests}; Figura~\ref{fig:certificado}.\\
+\multicolumn{4}{@{}l}{\footnotesize\textbf{Protección de la aplicación}}\\
+\footnotesize Entradas y SQL & \footnotesize Inyección SQL, asignación masiva, inyección de fórmulas en CSV. & \footnotesize ORM de Django; el SQL propio fuera de migraciones usa cadenas fijas o parámetros \cod{\%s}; formularios y servicios de lista blanca (\cod{DatoInvalido}); GeoJSON validado con \cod{shapely}; prefijo \cod{'} en el CSV de exportación. & \footnotesize Pruebas de servicios; \path{catalogo/test_traslape.py}; \cod{ExportarTests}.\\
+\footnotesize TLS & \footnotesize Credenciales o sesiones interceptadas. & \footnotesize TLS de Cloud Run; con \cod{DEBUG=false}, redirección a HTTPS, HSTS, \cod{SECURE\_PROXY\_SSL\_HEADER} y TLS hacia Neon. & \footnotesize Encabezados reales de la URL pública (Figura~\ref{fig:https}).\\
+\footnotesize Contenedores & \footnotesize Escape del contenedor con privilegios de \emph{root}. & \footnotesize \cod{USER app} (uid 10001) en ambos \cod{Dockerfile}; el motor sin documentación interactiva (\cod{docs\_url=None}). & \footnotesize Inspección de los \cod{Dockerfile}.\\
+\bottomrule
+\end{longtable}
+\end{small}
+
+\textbf{Defensa en tres capas.} Ninguna regla crítica depende de una sola pieza: el motor decide, el servicio revalida dentro de la transacción y la base vuelve a comprobar con RLS, disparadores e índices (D22, sección~\ref{sec:desviaciones}).
+
+% =====================================================================
+\section{Gestión de secretos}
+\label{sec:secretos}
+% =====================================================================
+
+\path{verdeazul/settings.py} lee todo lo sensible del entorno y \cod{env\_obligatoria} detiene el arranque si falta \cod{SECRET\_KEY} o \cod{DATABASE\_URL}. En local los valores están en \cod{.env}, que \cod{.gitignore} y \cod{.dockerignore} excluyen; el repositorio solo versiona \cod{.env.example} con campos vacíos. Revisamos el historial completo de Git (\cod{git log --all -p}) buscando cadenas de conexión con contraseña, claves privadas y prefijos de credenciales de Neon: solo aparecen marcadores de posición y claves falsas de las pruebas. En Cloud Run, \cod{deploy.yml} monta cada secreto como variable de entorno con \cod{--set-secrets}; Cloud Run lo resuelve al iniciar la instancia y no la inicia si no puede leerlo \cite{gcp-run-secrets}.
+
+\begin{table}[ht]
+\centering\footnotesize
+\caption{Secretos del sistema (nombres en Secret Manager según \cod{deploy.yml}; no se reproducen valores).}
+\label{tab:secretos}
+\begin{tabularx}{\linewidth}{@{}P{4.3cm}YP{4.2cm}@{}}
+\toprule
+\textbf{Secreto} & \textbf{Uso} & \textbf{Quién lo recibe}\\
+\midrule
+\cod{verdeazul-secret-key} & \cod{SECRET\_KEY}: firma de sesiones y tokens CSRF. & \cod{verdeazul} y los tres \emph{jobs}.\\
+\cod{verdeazul-db-url} & \cod{DATABASE\_URL} de Neon con el rol \cod{app\_runtime} y \cod{sslmode=require}. & \cod{verdeazul}, \cod{tarea-diaria}, \cod{sellar-bitacora}.\\
+\cod{verdeazul-migrate-db-url} & \cod{DATABASE\_URL} con el rol dueño, solo para DDL. & Job \cod{verdeazul-migrate} (SA propia).\\
+\cod{verdeazul-mfa-clave-cifrado} & Clave de cifrado de los secretos TOTP, separada de \cod{SECRET\_KEY}. & \cod{verdeazul}.\\
+\cod{verdeazul-certificado-clave} & Clave privada Ed25519 de los certificados y de los sellos de la bitácora. & \cod{verdeazul}, \cod{sellar-bitacora}.\\
+\cod{verdeazul-allowed-hosts}, \cod{verdeazul-csrf-origins} & Dominio \cod{*.run.app} y orígenes HTTPS confiables (configuración, no credenciales). & \cod{verdeazul}.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Clave de firma.} Se genera con \cod{manage.py generar\_clave\_certificados}, que imprime la clave privada una sola vez y su huella pública. La privada vive en \cod{verdeazul-certificado-clave} y nunca se escribe en la base, la bitácora ni los registros; la huella de producción (\cod{14428e8d\ldots907c2}) está fijada en \cod{CERTIFICADO\_CLAVES\_CONFIABLES} dentro de \cod{deploy.yml} y publicada en el README, así la confianza no depende de lo que diga el documento. Las pruebas usan una clave efímera (\path{verdeazul/pruebas.py}). Para rotar, se agrega la huella nueva sin retirar las anteriores, de modo que los certificados emitidos sigan verificando.
+
+\textbf{Identidades.} \cod{verdeazul-app} tiene \cod{secretAccessor} solo sobre los secretos de ejecución; \cod{verdeazul-migrate} solo sobre la cadena del dueño y \cod{SECRET\_KEY}; \cod{verdeazul-autorizador} no tiene acceso a secretos. GitHub Actions usa WIF restringido al repositorio, sin claves JSON de larga vida. Secret Manager cifra los valores en reposo con AES-256 sin configuración adicional \cite{gcp-sm-enc}. Los permisos IAM descritos salen del README y de \cod{deploy.yml}; no los verificamos en la consola (sección~\ref{sec:evidencia}).
+
+% =====================================================================
+\section{Seguridad heredada de la plataforma}
+\label{sec:plataforma}
+% =====================================================================
+
+\textbf{Lo que Neon protege sin configuración.} Neon cifra los datos en reposo con AES-256 en volúmenes NVMe y guarda los respaldos en almacenamiento con cifrado del lado del servidor \cite{neon-security}. Rechaza toda conexión que no use TLS y autentica los roles con SCRAM-SHA-256 \cite{neon-connect}. Cada proyecto tiene su propio cómputo y almacenamiento, y Neon recomienda un proyecto por aplicación para aislar datos y recursos \cite{neon-plans}. La recuperación a un punto en el tiempo restaura la rama raíz dentro de la ventana de historia, que en el plan gratuito es de 6~horas \cite{neon-restore,neon-plans}. Estas garantías cubren amenazas de infraestructura: un disco robado, una captura de tráfico o un error del que se vuelva en pocas horas.
+
+\textbf{Lo que configuramos y por qué.} (1)~\emph{Conexión}: cadena directa con \cod{sslmode=require}, y Django exige TLS fuera de \cod{DEBUG}. Neon recomienda \cod{verify-full}; \cod{require} cifra el canal pero no valida el certificado del servidor, así que pasar a \cod{verify-full} es una mejora pendiente. (2)~\emph{Usuario}: los roles creados desde la consola o la API de Neon pertenecen a \cod{neon\_superuser} y reciben \cod{CREATEDB}, \cod{CREATEROLE} y \cod{BYPASSRLS} \cite{neon-roles}, lo que anularía RLS. Por eso \cod{app\_runtime} se creó por SQL con \cod{NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE}, sin membresías ni propiedad de tablas, y con solo DML; \cod{grant\_after\_migrate.sql} le retira UPDATE, DELETE y TRUNCATE sobre la bitácora y DELETE y TRUNCATE sobre los certificados. El rol dueño solo se usa en el \emph{job} de migraciones. (3)~\emph{Restricción de origen}: IP Allow solo existe en el plan Scale \cite{neon-ip}; en el plan gratuito la base acepta conexiones desde cualquier dirección con credenciales válidas, y además Cloud Run sin conector VPC no tiene una IP de salida fija. La compensación es la contraseña aleatoria guardada solo en Secret Manager y el mínimo privilegio del rol. (4)~\emph{Entornos}: desarrollo usa PostgreSQL 17 local en Docker y producción la rama principal de Neon; no creamos ramas adicionales ni ramas protegidas, que son de planes pagos \cite{neon-security}. Descartamos Neon Auth porque concede DML por defecto a sus roles sobre tablas sin RLS, como \cod{django\_session}.
+
+\textbf{Responsabilidad compartida.} Google opera la infraestructura de Cloud Run, aísla las instancias, termina TLS en el Google Front End y cifra Secret Manager; el cliente sigue respondiendo por sus políticas de acceso y sus datos \cite{gcp-shared}. Del lado del equipo quedan el código, los permisos IAM de cada \emph{service account}, el valor y la rotación de los secretos, la configuración del rol de base de datos, RLS, los disparadores y la bitácora.
+
+\begin{table}[ht]
+\centering\footnotesize
+\caption{Riesgos que ninguna de las dos plataformas cubre y cómo los tratamos.}
+\label{tab:residuales}
+\begin{tabularx}{\linewidth}{@{}P{4.4cm}Y@{}}
+\toprule
+\textbf{Riesgo (amenaza de la Parte 1)} & \textbf{Tratamiento y riesgo residual}\\
+\midrule
+Credencial de \cod{app\_runtime} filtrada & Sin IP Allow, sirve desde cualquier red. Ese rol puede fijar \cod{app.usuario\_id}: RLS protege contra errores de la aplicación, no contra quien ya ejecuta SQL con él. Los disparadores siguen aplicando y la bitácora registra los cambios hechos por la aplicación.\\
+Administrador de la base (rol dueño) & Puede desactivar disparadores o reescribir la bitácora; la cadena y los sellos horarios firmados con una clave que no está en la base lo delatan, salvo lo ocurrido en la última hora (D23).\\
+Consulta mal construida o permiso excesivo & Neon no lo detecta. Lo mitigan el ORM, la denegación por defecto del motor, RLS con \cod{FORCE} y las pruebas celda por celda.\\
+Compromiso del contenedor \cod{verdeazul} & La clave Ed25519 está en memoria (D24): quien controle el proceso puede firmar. No existe un HSM o servicio de firma no exportable como el Transit de OpenBao previsto en la Parte 1.\\
+Pérdida de datos fuera de la ventana & La ventana de 6~h del plan gratuito es corta; no hay respaldos lógicos externos programados.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% =====================================================================
+\section{Desviaciones respecto al diseño original}
+\label{sec:desviaciones}
+% =====================================================================
+
+El README registra 32 decisiones (D1--D32). Aquí explicamos las que cambiaron la arquitectura o la seguridad; las demás (fórmula de carbono, pantallas, detalles de HBAC) están en el README, §4, §5.6 y §6.3.
+
+\textbf{D18 — Políticas de UPDATE que se combinaban (migración \cod{cuentas/0019}).} \emph{Diseño}: una política RLS por celda de escritura. \emph{Hallazgo}: cuando una tabla tiene varias políticas permisivas de UPDATE, PostgreSQL exige que la fila vieja cumpla el \cod{USING} de alguna y la nueva el \cod{WITH CHECK} de alguna, no necesariamente la misma \cite{pg-rls}. Una fila podía entrar por una política estrecha, como el cierre de la baja que hace un GC, y salir por el \cod{WITH CHECK} amplio de otra; así se podía reactivar una cuenta \textsc{en\_baja}. \emph{Solución}: cada \cod{WITH CHECK} repite el rol y la condición de su propia política, y disparadores fijan lo que nunca cambia (máquina de estados de la cuenta, quién y desde cuándo en un rol, sesiones cerradas). La migración \cod{0023} agregó una fase interna para que las funciones \cod{SECURITY DEFINER} no vuelvan a invocar la misma política. \emph{Consecuencia}: RLS deja de ser solo un filtro de lectura y se convierte en una restricción de escritura verificable; lo prueba \path{cuentas/test_rls_actualizaciones.py::test_nadie_reactiva_ni_reabre_cuentas}.
+
+\textbf{D19 — Vistas que perdían filas bajo RLS.} \emph{Diseño}: pantallas que muestran nombres de cuentas y períodos. \emph{Hallazgo}: un \cod{JOIN} (por ejemplo, con \cod{select\_related}) hacia una fila que el sujeto no puede leer, como el período para un PF o la cuenta del técnico para un VF, hace que la fila principal desaparezca de la lista o que la ficha falle. \emph{Solución}: las pantallas de O1--O5 y de certificados no hacen \cod{JOIN}; resuelven los nombres aparte con lo que el sujeto puede listar y muestran \cod{\#id} en lo demás. \emph{Consecuencia}: la lista coincide con lo que concede el motor y no se filtra el nombre de una cuenta ajena (\path{mediciones/test_pantallas.py::PantallasBajoRLSTests}, con el rol real de la aplicación).
+
+\textbf{D22 — Tres capas.} \emph{Diseño}: la base revalida lo crítico. \emph{Implementado}: disparadores en \cod{catalogo/0003}, \cod{mediciones/0003}, \cod{certificados/0002} y \cod{bitacora/0002} que repiten H4, C2, C3, C13, C19, C20 y RG1 aun para el dueño. \emph{Límite}: C2 y C3 se comprueban contra el sujeto de la conexión, que solo existe en peticiones web; en consola o en tareas programadas esas dos reglas quedan solo en el servicio.
+
+\begin{small}
+\setlength{\tabcolsep}{4pt}
+\begin{longtable}{@{}P{2.6cm}P{3.6cm}P{3.6cm}P{6.4cm}@{}}
+\caption{Otras desviaciones con efecto en la arquitectura o la seguridad.}\label{tab:desviaciones}\\
+\toprule
+\footnotesize\textbf{Tema} & \footnotesize\textbf{Parte 1} & \footnotesize\textbf{Implementado} & \footnotesize\textbf{Motivo y consecuencia de seguridad}\\
+\midrule
+\endfirsthead
+\toprule
+\footnotesize\textbf{Tema} & \footnotesize\textbf{Parte 1} & \footnotesize\textbf{Implementado} & \footnotesize\textbf{Motivo y consecuencia de seguridad}\\
+\midrule
+\endhead
+\footnotesize Infraestructura (D5) & \footnotesize Local: KVM, VLAN, OPNsense, Caddy + WAF. & \footnotesize Cloud Run + Neon. & \footnotesize Lo exige la consigna. TLS y aislamiento pasan al proveedor; se pierde el WAF y la segmentación por VLAN: la frontera entre aplicación y motor la da IAM, no la red.\\
+\footnotesize Motor de decisión & \footnotesize OPA con políticas en Rego. & \footnotesize Servicio FastAPI propio con la matriz como datos. & \footnotesize No aparece en la tabla D del README. Conserva PEP y PDP separados, denegación por defecto y fallo cerrado, y la cobertura se prueba celda por celda; a cambio, la política es código Python y no tiene el registro de decisiones de OPA.\\
+\footnotesize Secretos y firma (D5, D24) & \footnotesize OpenBao: credenciales dinámicas de 1~h y firma en Transit sin exportar la clave. & \footnotesize Secret Manager como variables de entorno; contraseña estática de \cod{app\_runtime}. & \footnotesize Servicio gestionado y cifrado; pero la clave Ed25519 está en memoria del contenedor y la credencial de la base no rota sola.\\
+\footnotesize Bitácora (D23) & \footnotesize Instancia aparte, relé con \emph{outbox}, sellos a Wazuh. & \footnotesize Misma base, encadenamiento síncrono por disparador, sellos firmados a la base y a Cloud Logging. & \footnotesize Sin proceso de relé; el evento se confirma con el cambio. Lo de la última hora solo lo protege la cadena.\\
+\footnotesize Autenticidad del certificado (D25) & \footnotesize Firma con clave de OpenBao. & \footnotesize Clave incrustada más huella publicada. & \footnotesize Una clave incrustada sola no prueba el emisor: un documento re-firmado con otra clave sale “íntegro pero no de Verdeazul” (Figura~\ref{fig:certificado}).\\
+\footnotesize Segundo factor & \footnotesize WebAuthn y TOTP. & \footnotesize TOTP y códigos de recuperación. & \footnotesize Menos resistencia al \emph{phishing}; los secretos TOTP se guardan cifrados.\\
+\footnotesize Geometría (D2) y campo (D3) & \footnotesize PostGIS; PWA sin conexión con paquetes firmados. & \footnotesize GeoJSON + \cod{shapely}; sin PWA. & \footnotesize C20 se valida en el servicio con candado consultivo, no en la base. Sin captura sin conexión no existe el riesgo R6, y C16 se ejerce con una sincronización final vacía (D8).\\
+\footnotesize Estado del certificado (D26) & \footnotesize \textsc{reemplazado}. & \footnotesize \textsc{revocado} con \cod{reemplaza\_a}. & \footnotesize Se sigue la matriz, que es el documento verificable; el histórico se conserva.\\
+\bottomrule
+\end{longtable}
+\end{small}
+
+% =====================================================================
+\section{Cobertura de la matriz de acceso}
+\label{sec:cobertura}
+% =====================================================================
+
+La matriz de la Parte 1 tiene 78 celdas (6 roles por 13 columnas: O1a, O1b, O2--O6, O7a--O7d, O8 y O9): 50 conceden alguna operación y 28 son denegaciones explícitas. \path{docs/cobertura-matriz.md}, generada con \cod{manage.py tabla\_cobertura}, tiene una fila por celda con sus acciones, el lugar donde se aplica y las pruebas. \path{autorizacion/test_cobertura_tabla.py} falla si la tabla no coincide con \path{autorizacion/matriz.py} o si cita una función o una prueba inexistente; esa prueba pasó en la corrida del 19-nov. La Tabla~\ref{tab:cobertura} se generó desde ese archivo con \path{docs/informe/generar_cobertura.py}, sin transcribir a mano: cada celda con permiso tiene su fila; las denegadas de cada rol se agrupan en una fila que enumera sus números y objetos, y las 13 celdas del AE comparten fila porque tienen la misma operación, condición e implementación. Además de las pruebas indicadas, \cod{CeldaPorCeldaTests} comprueba en el motor real cada rol con cada acción, y las pruebas de RLS de cada columna repiten el control en la base.
+
+{\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.05}
+\begin{longtable}{@{}P{1.0cm}P{0.5cm}P{1.6cm}P{3.0cm}P{4.4cm}P{5.8cm}@{}}
+\caption{Cobertura celda por celda. Operaciones: L leer, CR crear, MO modificar, BA baja, EV enviar, AP aprobar, DV devolver, SO solicitar, AU autorizar, RE rechazar, AB abrir, TV pasar a verificación, CI cerrar, SI sincronizar, AR/RR asignar/retirar rol, RV revocar, RS resolver, X exportar; \ddag{} alerta H2 fuera de horario. “Dónde” indica el módulo PEP o de servicio y las funciones de \cod{autorizacion/condiciones.py}; HBAC está en \cod{autorizacion/hbac.py}.}\label{tab:cobertura}\\
+\toprule
+\textbf{Celda} & \textbf{Rol} & \textbf{Objeto} & \textbf{Permiso [condición]} & \textbf{Dónde se aplica} & \textbf{Prueba específica}\\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Celda} & \textbf{Rol} & \textbf{Objeto} & \textbf{Permiso [condición]} & \textbf{Dónde se aplica} & \textbf{Prueba específica}\\
+\midrule
+\endhead
+\entrada{cobertura_filas.tex}
+\bottomrule
+\end{longtable}}
+
+% =====================================================================
+\section{Evidencia de implementación}
+\label{sec:evidencia}
+% =====================================================================
+
+Las figuras de esta sección son salidas de consola copiadas sin editar, salvo recortes marcados con \cod{[\ldots]}; los archivos completos están en \path{docs/informe/evidencia/}. Indicamos en cada una si proviene de la URL pública o del entorno local, porque, como se explicó en la sección~\ref{sec:arquitectura}, la instancia pública aún no ejecuta \cod{develop}.
+
+\begin{figure}[H]
+\begin{Verbatim}
+$ curl -sI https://verdeazul-444812071990.us-east1.run.app/admin/login/      (19-nov-2026 19:43 UTC)
+HTTP/1.1 200 OK
+x-frame-options: DENY
+strict-transport-security: max-age=31536000; includeSubDomains
+x-content-type-options: nosniff
+referrer-policy: same-origin
+server: Google Frontend
+$ curl -s -o /dev/null -w '%{http_code} %{redirect_url}' http://verdeazul-444812071990.us-east1.run.app/admin/login/
+302 https://verdeazul-444812071990.us-east1.run.app/admin/login/
+\end{Verbatim}
+\caption{URL pública de Cloud Run: responde por HTTPS con HSTS de un año y redirige HTTP a HTTPS. La revisión en ejecución es anterior a \cod{develop}.}
+\label{fig:https}
+\end{figure}
+
+\begin{figure}[H]
+\begin{Verbatim}
+$ docker compose exec web sh -c 'python manage.py test . $(ls autorizacion/test_*.py autorizacion/tests.py | sed [...])'
+[...]
+Ran 663 tests in 103.860s
+OK (skipped=5)
+$ docker compose exec autorizador python -m unittest discover -s autorizacion -p "test_*.py"
+[...]
+Ran 109 tests in 0.063s
+OK (skipped=7)
+\end{Verbatim}
+\caption{Suites completas ejecutadas el 19-nov-2026 sobre \cod{develop} (\cod{f1ca583}) en Docker Compose local.}
+\label{fig:pruebas}
+\end{figure}
+
+\begin{figure}[H]
+\begin{Verbatim}
+$ curl -sS -X POST http://127.0.0.1:8080/autorizar -H 'Content-Type: application/json' \
+    -d '{"sujeto":{"id":7,"estado":"ACTIVA","roles":["TC"],"mfa_edad":null},
+         "accion":"medicion:aprobar","recurso":{"tipo":"medicion"}}'
+{"resultado":"NIEGA","regla":"RG1","motivo":"La matriz no concede AP sobre O4 (roles: TC).",[...]}
+# Flujo en Django: servicio real, motor real por HTTP, base de pruebas (evidencia/salida_flujo.txt)
+=== 1. Operacion no autorizada: la TC intenta aprobar (motor real por HTTP) ===
+RESULTADO: AccesoDenegado: La matriz no concede AP sobre O4 (roles: TC).
+PF ajeno lee la medicion -> FUERA_DE_ALCANCE (regla C4)
+[...]
+=== 3. Bitacora (O8) de este flujo ===
+[...]
+#7   tecnica      medicion:enviar        OK        hash=e7c0e4072256fe13... prev=233d9020b6a8978f...
+#8   tecnica      medicion:aprobar       DENEGADO  hash=70706bab33d79511... prev=e7c0e4072256fe13...
+#9   verificador  medicion:aprobar       OK        hash=2cbb21716ce2a5b5... prev=70706bab33d79511...
+#10  verificador  certificado:emitir     OK        hash=97509f38470e09ba... prev=2cbb21716ce2a5b5...
+verificar_cadena(): INTEGRA
+\end{Verbatim}
+\caption{Operación no autorizada (entorno local): una técnica intenta aprobar una medición; el motor la niega por RG1, el servicio lanza \cod{AccesoDenegado} y la negación queda encadenada en la bitácora (\#8) entre los eventos permitidos. Un PF ajeno recibe 404 (C4).}
+\label{fig:denegada}
+\end{figure}
+
+\begin{figure}[H]
+\begin{Verbatim}
+$ python certificados/formato.py certificado.json --huella 31c15a5f[...]a7d0af45
+VÁLIDO: la firma es correcta y la clave es de Verdeazul.
+  Certificado bd0faee9-2da8-4626-be0c-9c000caa9727 · 38.2737 t CO2
+$ python certificados/formato.py certificado_alterado.json --huella 31c15a5f[...]a7d0af45   (toneladas + 10)
+NO VÁLIDO
+  - La firma NO corresponde al contenido: el certificado fue alterado o no lo firmó esa clave.
+$ python certificados/formato.py certificado.json --huella 14428e8d[...]dba907c2   (huella de producción)
+NO VÁLIDO
+  - La clave que firmó NO es una clave publicada por Verdeazul.
+\end{Verbatim}
+\caption{Certificado emitido automáticamente al aprobar (entorno local, clave de desarrollo) y verificado con el verificador independiente, sin Django ni base: el original es válido, el alterado se rechaza y el mismo documento no se acepta con la huella de producción, porque lo firmó otra clave.}
+\label{fig:certificado}
+\end{figure}
+
+\textbf{Dependabot.} \path{.github/dependabot.yml} revisa cada semana \cod{pip} y las imágenes de Docker, dirige los PR a \cod{develop} e ignora saltos mayores. El repositorio remoto contiene seis ramas creadas por \cod{dependabot[bot]}: \cod{python} 3.15-slim y Django 6.1.3 (13-nov), y \cod{argon2-cffi-bindings}, \cod{fastapi}, \cod{psycopg} y \cod{psycopg-binary} (17-nov). El equipo atendió las dos primeras en el PR~\#9: no se fusionaron porque rompen la base Django 5.2~LTS y Python 3.12 fijada en la arquitectura, y se agregaron las reglas \cod{ignore} que lo documentan. Las cuatro actualizaciones menores del 17-nov siguen sin fusionar en \cod{develop}.
+
+\pendiente{\textbf{Evidencia pendiente y cómo obtenerla.} No tuvimos acceso autenticado a la consola de Google Cloud ni a la configuración del repositorio (es privado), así que no reproducimos esas capturas. Antes de entregar: (1)~fusionar \cod{develop} en \cod{main}, esperar a que termine el \emph{pipeline} y capturar el sistema en \cod{/cuentas/login/} y en \cod{/certificados/verificar/} con el candado del navegador; (2)~capturar \emph{Security} $\rightarrow$ \emph{Secret Manager} con los siete secretos, sin abrir ningún valor, y la pestaña de permisos de \cod{verdeazul-certificado-clave}; (3)~capturar \emph{Settings} $\rightarrow$ \emph{Code security} con Dependabot activo y \emph{Security} $\rightarrow$ \emph{Dependabot alerts}, donde debe constar la alerta atendida; (4)~capturar en Artifact Registry las etiquetas \cod{v1.0.0} y \cod{sha-} de \cod{app} y \cod{autorizador}; (5)~repetir en producción las Figuras~\ref{fig:denegada} y~\ref{fig:certificado} y abrir \cod{/gestion/bitacora/verificar/}.}
+
+% =====================================================================
+\begin{thebibliography}{99}
+\setlength{\itemsep}{0pt}\small
+\bibitem{neon-security} Neon. (2026). \emph{Security overview}. \url{https://neon.com/docs/security/security-overview}
+\bibitem{neon-connect} Neon. (2026). \emph{Connect to Neon securely}. \url{https://neon.com/docs/connect/connect-securely}
+\bibitem{neon-roles} Neon. (2026). \emph{Manage roles}. \url{https://neon.com/docs/manage/roles}
+\bibitem{neon-ip} Neon. (2026). \emph{IP Allow}. \url{https://neon.com/docs/introduction/ip-allow}
+\bibitem{neon-restore} Neon. (2026). \emph{Branch restore}. \url{https://neon.com/docs/introduction/branch-restore}
+\bibitem{neon-plans} Neon. (2026). \emph{Neon plans}. \url{https://neon.com/docs/introduction/plans}
+\bibitem{gcp-run-https} Google Cloud. (2026). \emph{Invoke with an HTTPS request}. \url{https://docs.cloud.google.com/run/docs/triggering/https-request}
+\bibitem{gcp-run-s2s} Google Cloud. (2026). \emph{Authenticating service-to-service}. \url{https://docs.cloud.google.com/run/docs/authenticating/service-to-service}
+\bibitem{gcp-run-secrets} Google Cloud. (2026). \emph{Configure secrets for services}. \url{https://docs.cloud.google.com/run/docs/configuring/services/secrets}
+\bibitem{gcp-sm-enc} Google Cloud. (2026). \emph{Secret Manager encryption}. \url{https://docs.cloud.google.com/secret-manager/docs/encryption}
+\bibitem{gcp-ar-tags} Google Cloud. (2026). \emph{Container image names and tags}. \url{https://docs.cloud.google.com/artifact-registry/docs/docker/names}
+\bibitem{gcp-shared} Google Cloud. (2026). \emph{Shared responsibilities and shared fate on Google Cloud}. \url{https://docs.cloud.google.com/architecture/framework/security/shared-responsibility-shared-fate}
+\bibitem{pg-rls} PostgreSQL Global Development Group. (2026). \emph{Row Security Policies}. \url{https://www.postgresql.org/docs/current/ddl-rowsecurity.html}
+\end{thebibliography}
+
+\end{document}
