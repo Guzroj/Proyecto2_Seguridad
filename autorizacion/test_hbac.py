@@ -1,5 +1,5 @@
 """
-Paso 15 · Controles HBAC H1–H3 en el motor, con contadores armados a mano.
+Controles HBAC H1–H3 en el motor, con contadores armados a mano.
 Python puro: corre en Django y en el contenedor del autorizador. Incluye V11, V12 y V13.
 """
 

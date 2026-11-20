@@ -1,5 +1,5 @@
 """
-Paso 13 · Servicio HTTP del motor (FastAPI). Necesita fastapi, que solo está en
+Servicio HTTP del motor (FastAPI). Necesita fastapi, que solo está en
 la imagen del autorizador; en la de Django estas pruebas se saltan. Se corren con:
 
     docker compose exec autorizador python -m unittest autorizacion.test_app autorizacion.test_reglas

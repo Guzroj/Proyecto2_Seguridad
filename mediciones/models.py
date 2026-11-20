@@ -9,7 +9,7 @@ Flujo de medición y certificación (activos O2, O3, O4 y O5 de la Parte 1).
 
 Este archivo define datos y restricciones que la base de datos hace cumplir SIEMPRE,
 sin importar quién llame. Las transiciones (quién puede y cuándo) viven en services.py
-y la autorización por rol la decide el motor de Persona 3.
+y la autorización por rol la decide el motor de autorización.
 """
 
 import uuid

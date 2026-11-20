@@ -1,5 +1,5 @@
 """
-Paso 18b · Pantallas de roles (O7b, C7) y ventanas de auditoría (O7a AU, C14),
+Pantallas de roles (O7b, C7) y ventanas de auditoría (O7a AU, C14),
 de punta a punta con login, motor real y servicios. Incluye V10.
 """
 

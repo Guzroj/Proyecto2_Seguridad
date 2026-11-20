@@ -1,5 +1,5 @@
 """
-Paso 14c · O7–O9 de punta a punta con el gancho autorizar() conectado al motor
+O7–O9 de punta a punta con el gancho autorizar() conectado al motor
 real (la configuración por defecto desde este paso): los servicios de cuentas,
 roles, ventanas, dispositivos, segundo factor y alertas. Incluye V9, V10 y V14.
 """

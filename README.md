@@ -82,9 +82,10 @@ propios de producción, distintos de los de desarrollo. Se entregan al profesor 
 privado y no se publican en el repositorio.
 
 **Etiquetas publicadas.** Cada ejecución exitosa de *Build, push y deploy* (push a `main`)
-publica las imágenes `app` y `autorizador` con dos etiquetas: la versión semántica `v1.0.0` y
-`sha-<commit>`. Cloud Run despliega por `sha-<commit>`; la versión en ejecución es la de la
-ejecución exitosa más reciente en *Actions*.
+publica las imágenes `app` y `autorizador` con dos etiquetas: la versión semántica (auto-
+incrementada según *Conventional Commits*: `fix`=patch, `feat`=minor, cambio incompatible=major)
+y `sha-<commit>`. Cloud Run despliega por `sha-<commit>`; la versión semántica avanza en cada
+push y queda guardada como tag git `vX.Y.Z`.
 
 | Ejecución | Fecha (UTC) | Commit en `main` | Etiquetas publicadas | Resultado |
 |---|---|---|---|---|
@@ -101,7 +102,8 @@ ejecución exitosa más reciente en *Actions*.
 | #1 | 2026-11-13 00:03 | `6ce4cad` (PR #2) | `v1.0.0`, `sha-6ce4cad` | Éxito |
 
 Los despliegues posteriores a esta tabla se consultan en *Actions → Build, push y deploy*: la
-etiqueta `sha-` es siempre el hash corto del commit desplegado.
+etiqueta `sha-` es siempre el hash corto del commit desplegado y la versión semántica `vX.Y.Z`
+avanza automáticamente en cada push (a partir de la ejecución #12, con el versionado por tag git).
 
 **Volver a una versión anterior** (ejemplo con `sha-db5c48c`):
 
@@ -145,9 +147,9 @@ autenticado. La URL privada llega a Django en la variable `AUTORIZADOR_URL`.
 `.github/workflows/deploy.yml` se autentica con **Workload Identity Federation** (WIF, sin
 claves JSON de service account de larga vida). En cada push a `main`:
 
-1. Construye las dos imágenes con **dos etiquetas explícitas**: la versión semántica
-   (`v1.0.0` por defecto, configurable con la variable `IMAGE_VERSION`; si el push es de una
-   etiqueta git `vX.Y.Z`, esa etiqueta) y `sha-<hash corto del commit>`.
+1. Calcula la **versión semántica** siguiente a partir del último tag `v*` y del tipo de
+   cambio (*Conventional Commits*), la guarda como tag git `vX.Y.Z` y construye las dos imágenes
+   con **dos etiquetas explícitas**: esa versión semántica y `sha-<hash corto del commit>`.
 2. Hace push a Artifact Registry:
    `us-east1-docker.pkg.dev/<proyecto>/verdeazul/app` y `.../verdeazul/autorizador`.
 3. Despliega ambos servicios en Cloud Run por etiqueta de imagen inmutable.
@@ -159,9 +161,10 @@ claves JSON de service account de larga vida). En cada push a `main`:
    `America/Costa_Rica`).
 
 Nunca se publica `latest`. Cloud Run despliega siempre por la etiqueta `sha-<commit>`, que es
-inmutable e identifica el estado exacto del código; la etiqueta semántica se reasigna mientras
-no se cambie `IMAGE_VERSION` o se publique una etiqueta git nueva. Así se responde qué versión
-está corriendo y a cuál se vuelve (§1.1).
+inmutable e identifica el estado exacto del código; la etiqueta semántica avanza en cada push
+(`v1.0.0` → `v1.1.0` → …) y queda registrada como tag git, de modo que siempre se puede saber
+qué versión está corriendo y a cuál volver (§1.1). Un tag git manual `vX.Y.Z` publica esa
+versión exacta sin recalcular.
 
 #### Secretos y variables (Secret Manager)
 

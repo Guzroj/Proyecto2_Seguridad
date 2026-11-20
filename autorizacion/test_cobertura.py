@@ -1,5 +1,5 @@
 """
-Paso 19 · Cobertura celda por celda: las 78 celdas de la matriz (6 roles × 13
+Cobertura celda por celda: las 78 celdas de la matriz (6 roles × 13
 objetos, con la corrección 3 de GC·O7d), cada operación y cada acción que cae en
 ella, contra el motor real. Python puro: corre en Django y en el autorizador.
 

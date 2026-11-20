@@ -1,5 +1,5 @@
 """
-Paso 15 · HBAC de punta a punta: el PEP cuenta en la base, el motor real decide
+HBAC de punta a punta: el PEP cuenta en la base, el motor real decide
 y Django anota la actividad y crea las alertas. Incluye V11, V13 y la RLS de
 los contadores.
 """

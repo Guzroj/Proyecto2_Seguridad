@@ -1,5 +1,5 @@
 """
-Pantallas de Persona 4 de punta a punta: ingreso con segundo factor, motor de autorización
+Pantallas de certificados, bitácora y exportaciones de punta a punta: ingreso con segundo factor, motor de autorización
 real, servicios, bitácora y emisión reales. Las vistas no deciden permisos: se comprueba que
 el servidor rechaza aunque alguien llame la URL directamente (403 / 404 / 405).
 """

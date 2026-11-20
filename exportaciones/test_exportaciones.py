@@ -1,5 +1,5 @@
 """
-Exportaciones (X, Persona 4) con el motor real: solo el AE en su ventana (C5), N = registros
+Exportaciones (X) con el motor real: solo el AE en su ventana (C5), N = registros
 reales, H3 (más de 500 en 24 h exige segundo factor reciente), marca de agua dentro del
 archivo, evento en la bitácora, negaciones registradas y campos de lista blanca.
 """

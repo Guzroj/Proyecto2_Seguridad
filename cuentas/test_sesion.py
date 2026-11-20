@@ -1,4 +1,4 @@
-"""Paso 5 · Inactividad por rol, máximo absoluto de 10 h y cierre de sesiones."""
+"""Inactividad por rol, máximo absoluto de 10 h y cierre de sesiones."""
 
 import base64
 import secrets
@@ -37,7 +37,7 @@ class SesionBase(TestCase):
         for r in roles_usuario:
             services.agregar_rol(u, r)
         if set(roles_usuario) & roles.ROLES_CON_MFA:
-            # Sin TOTP, ExigirMFAMiddleware llevaría a activarlo (paso 6).
+            # Sin TOTP, ExigirMFAMiddleware llevaría a activarlo.
             TOTP.activate(u, base64.b32encode(secrets.token_bytes(20)).decode())
         return u
 

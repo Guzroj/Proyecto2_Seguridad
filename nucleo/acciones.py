@@ -1,8 +1,8 @@
 """
 Vocabulario ÚNICO de acciones. Lo usan:
   - los servicios, al llamar ganchos.autorizar(usuario, accion, recurso, contexto)
-  - el motor de autorización de Persona 3, para mapear cada acción a su celda de la matriz
-  - la bitácora de Persona 4, como campo "accion" de cada evento
+  - el motor de autorización, para mapear cada acción a su celda de la matriz
+  - la bitácora, como campo "accion" de cada evento
 
 Formato: "<objeto>:<operación>". Entre paréntesis, la celda y operación de la matriz.
 """

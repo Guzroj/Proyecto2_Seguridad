@@ -1,4 +1,4 @@
-"""Paso 6 · Segundo factor (TOTP + códigos de recuperación), reautenticación de 300 s y usuarios de prueba."""
+"""Segundo factor (TOTP + códigos de recuperación), reautenticación de 300 s y usuarios de prueba."""
 
 import base64
 import os

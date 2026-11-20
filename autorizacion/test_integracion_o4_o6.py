@@ -1,5 +1,5 @@
 """
-Paso 14b · O4–O6 de punta a punta: mediciones, verificación, enmiendas y el
+O4–O6 de punta a punta: mediciones, verificación, enmiendas y el
 cierre de la baja de un técnico (C16), con objetos reales, atributos leídos por
 el PEP y decisión del motor. Incluye V2, V3, V4 y V15 (la parte de autorización).
 """

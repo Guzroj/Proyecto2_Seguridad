@@ -1,5 +1,5 @@
 """
-Paso 9 · Ventanas del auditor externo: C14 (GC·O7a AU), C5 (atributo que usará
+Ventanas del auditor externo: C14 (GC·O7a AU), C5 (atributo que usará
 el motor) y la tarea diaria que activa y da de baja cuentas AE. Incluye la
 parte de cuentas de V9 (un día después del fin, el AE ya no tiene acceso).
 """

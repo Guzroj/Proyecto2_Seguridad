@@ -74,7 +74,7 @@ BEGIN
         );
     END IF;
 
-    -- Persona 4: la bitácora es de solo inserción y los certificados nunca se borran.
+    -- La bitácora es de solo inserción y los certificados nunca se borran.
     -- El GRANT general de arriba les dio UPDATE/DELETE: se quitan de nuevo (y TRUNCATE).
     IF to_regclass(v_esquema || '.bitacora_evento') IS NOT NULL THEN
         EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE ON TABLE %I.bitacora_evento FROM %I', v_esquema, v_rol);

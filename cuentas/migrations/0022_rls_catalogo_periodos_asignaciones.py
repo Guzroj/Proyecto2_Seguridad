@@ -1,5 +1,5 @@
 """
-Paso 17a · RLS de catálogo (O1a, O1b), períodos (O2) y asignaciones (O3).
+RLS de catálogo (O1a, O1b), períodos (O2) y asignaciones (O3).
 
 Lectura por FINCA RELACIONADA, no celda por celda: el PEP y los servicios del
 dominio leen filas que la pantalla no muestra (técnicos de la finca y el período

@@ -1,5 +1,5 @@
 """
-Paso 13 · Motor: la matriz como datos y la regla de decisión (RG1, RG3, RG5, RG6).
+Motor: la matriz como datos y la regla de decisión (RG1, RG3, RG5, RG6).
 
 Python puro (unittest, sin Django): corre con `manage.py test` y también dentro
 del contenedor del autorizador.

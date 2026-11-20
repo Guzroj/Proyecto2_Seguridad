@@ -1,5 +1,5 @@
 """
-Paso 14a · Condiciones de O1–O3 (C4, C6, C8, C9, C13, C19, C20) con atributos
+Condiciones de O1–O3 (C4, C6, C8, C9, C13, C19, C20) con atributos
 armados a mano. Python puro: corre en Django y en el contenedor del autorizador.
 """
 
@@ -173,7 +173,7 @@ class C20Tests(Base):
 
 
 # ===========================================================================
-# Paso 14b · O4–O6
+# O4–O6
 # ===========================================================================
 def medicion(**cambios):
     base = {"tipo": "medicion", "id": "m1", "estado": "BORRADOR", "autor": S, "autor_original": S,
@@ -341,7 +341,7 @@ class C16Tests(Base):
 
 
 # ===========================================================================
-# Paso 14c · O7–O9
+# O7–O9
 # ===========================================================================
 def cuenta(id_=OTRO, estado="ACTIVA", roles=("PF",)):
     return {"tipo": "usuario", "id": id_, "estado": estado, "roles": list(roles)}

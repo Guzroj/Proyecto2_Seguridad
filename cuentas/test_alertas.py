@@ -1,5 +1,5 @@
 """
-Paso 12 · Alertas (O9): el motor HBAC las crea (proceso) y un GC distinto del
+Alertas (O9): el motor HBAC las crea (proceso) y un GC distinto del
 sujeto las resuelve con motivo (C22). Resolver una H1 levanta la suspensión y
 la primera lectura posterior exige segundo factor. Incluye V14.
 """

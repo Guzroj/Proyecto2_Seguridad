@@ -1,5 +1,5 @@
 """
-Paso 17 · RLS de las tablas del dominio, con un rol sin privilegios equivalente a
+RLS de las tablas del dominio, con un rol sin privilegios equivalente a
 app_runtime (SET ROLE) y los servicios reales autorizando con el motor.
 
 17a: catálogo (O1a, O1b), períodos (O2) y asignaciones (O3). Lectura por finca
@@ -51,7 +51,7 @@ EMITIDOS = []
 
 
 def emitir_prueba(medicion):
-    """on_medicion_aprobada de prueba: lo que haría Persona 4 al emitir el certificado."""
+    """on_medicion_aprobada de prueba: lo que hace la emisión al leer los datos del propietario."""
     EMITIDOS.append(procesos.datos_propietario_para_certificado(medicion))
 
 

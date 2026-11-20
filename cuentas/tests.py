@@ -140,7 +140,7 @@ class RestriccionBaseDeDatosTests(TestCase):
 
 
 # ===========================================================================
-# Paso 2 · Roles con vigencia y pares excluyentes
+# Roles con vigencia y pares excluyentes
 # ===========================================================================
 class RolesBaseTests(TestCase):
     def setUp(self):
@@ -303,7 +303,7 @@ class RolesBaseDeDatosTests(RolesBaseTests):
 
 
 # ===========================================================================
-# Paso 3 · usuarios_con_rol() conectado al gancho
+# usuarios_con_rol() conectado al gancho
 # ===========================================================================
 class UsuariosConRolTests(RolesBaseTests):
     def setUp(self):
