@@ -82,13 +82,20 @@ propios de producción, distintos de los de desarrollo. Se entregan al profesor 
 privado y no se publican en el repositorio.
 
 **Etiquetas publicadas.** Cada ejecución exitosa de *Build, push y deploy* (push a `main`)
-publica las imágenes `app` y `autorizador` con dos etiquetas: la versión semántica (auto-
-incrementada según *Conventional Commits*: `fix`=patch, `feat`=minor, cambio incompatible=major)
-y `sha-<commit>`. Cloud Run despliega por `sha-<commit>`; la versión semántica avanza en cada
-push y queda guardada como tag git `vX.Y.Z`.
+publica las imágenes `app` y `autorizador` con dos etiquetas: la versión semántica y
+`sha-<commit>`. Cloud Run despliega por `sha-<commit>`.
+
+- **Desde la ejecución #13** la versión semántica se calcula automáticamente a partir del último
+  tag git `v*` y de los mensajes de commit (*Conventional Commits*: `fix` y demás → patch,
+  `feat` → minor, cambio incompatible → major), y queda guardada como tag git `vX.Y.Z`: cada
+  versión es única y rastreable al commit que la generó.
+- **Hasta la ejecución #12** la etiqueta semántica era fija (`v1.0.0`) y se reasignaba en cada
+  despliegue; en esas ejecuciones la etiqueta que identifica la imagen sin ambigüedad es `sha-<commit>`.
 
 | Ejecución | Fecha (UTC) | Commit en `main` | Etiquetas publicadas | Resultado |
 |---|---|---|---|---|
+| #13 | 2026-11-20 20:09 | `e7de6fb` (PR #24, versionado semántico automático) | **`v1.1.0`**, `sha-e7de6fb` | Éxito |
+| #12 | 2026-11-20 19:36 | `4e57c83` (actualización del README) | `v1.0.0`, `sha-4e57c83` | Éxito |
 | #11 | 2026-11-20 17:39 | `41e20ab` (PR #22) | `v1.0.0`, `sha-41e20ab` | Éxito |
 | #10 | 2026-11-20 16:55 | `e10239d` | `v1.0.0`, `sha-e10239d` | Éxito |
 | #9 | 2026-11-20 16:48 | `0e3fc66` | `v1.0.0`, `sha-0e3fc66` | Éxito |
@@ -101,13 +108,15 @@ push y queda guardada como tag git `vX.Y.Z`.
 | #2 | 2026-11-20 02:10 | `2c2222c` (PR #15) | — | Falló: no publicó imagen |
 | #1 | 2026-11-13 00:03 | `6ce4cad` (PR #2) | `v1.0.0`, `sha-6ce4cad` | Éxito |
 
-Los despliegues posteriores a esta tabla se consultan en *Actions → Build, push y deploy*: la
-etiqueta `sha-` es siempre el hash corto del commit desplegado y la versión semántica `vX.Y.Z`
-avanza automáticamente en cada push (a partir de la ejecución #12, con el versionado por tag git).
+Los despliegues posteriores a esta tabla se consultan en *Actions → Build, push y deploy* y en
+los tags git del repositorio (`git tag -l "v*"`): la versión en producción es la del tag `v*` más
+reciente, y su etiqueta `sha-` es el hash corto del commit desplegado.
 
-**Volver a una versión anterior** (ejemplo con `sha-db5c48c`):
+**Volver a una versión anterior**, por versión semántica o por commit:
 
 ```bash
+gcloud run deploy verdeazul --region us-east1 \
+  --image us-east1-docker.pkg.dev/project-4d85c806-d471-4964-b73/verdeazul/app:v1.1.0
 gcloud run deploy verdeazul --region us-east1 \
   --image us-east1-docker.pkg.dev/project-4d85c806-d471-4964-b73/verdeazul/app:sha-db5c48c
 ```
