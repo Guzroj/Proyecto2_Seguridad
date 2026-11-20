@@ -34,14 +34,25 @@ CREATE OR REPLACE FUNCTION app_fase() RETURNS text
     LANGUAGE sql STABLE
     AS $$ SELECT NULLIF(current_setting('app.fase', true), '') $$;
 
+-- La fase se fija en el cuerpo y se restaura al salir. No se usa SET en la
+-- definición de la función: PostgreSQL exige ser superusuario para fijar un
+-- GUC propio (app.*) desde CREATE FUNCTION, y el rol dueño de Neon no lo es.
 CREATE OR REPLACE FUNCTION cuentas_id_para_login(p_username text) RETURNS bigint
-    LANGUAGE sql STABLE SECURITY DEFINER
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
     SET search_path = pg_catalog, public
-    SET app.fase = 'login'
     AS $$
-        SELECT id FROM public.cuentas_usuario
-         WHERE username = p_username AND estado = 'ACTIVA'
-    $$;
+DECLARE
+    v_fase text := current_setting('app.fase', true);
+    v_id bigint;
+BEGIN
+    PERFORM set_config('app.fase', 'login', true);
+    SELECT u.id INTO v_id
+      FROM public.cuentas_usuario u
+     WHERE u.username = p_username AND u.estado = 'ACTIVA';
+    PERFORM set_config('app.fase', COALESCE(v_fase, ''), true);
+    RETURN v_id;
+END
+$$;
 REVOKE ALL ON FUNCTION cuentas_id_para_login(text) FROM PUBLIC;
 DO $$
 BEGIN

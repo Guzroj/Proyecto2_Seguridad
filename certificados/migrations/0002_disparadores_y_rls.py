@@ -161,17 +161,26 @@ CREATE POLICY certificado_revocacion ON certificados_certificado FOR UPDATE
         SELECT 1 FROM mediciones_medicion v
          WHERE v.id = revocado_por_medicion_id AND v.estado = 'APROBADA' AND v.verificador_id = app_sujeto()));
 
+-- La fase se fija en el cuerpo y se restaura al salir. No se usa SET en la
+-- definición de la función: PostgreSQL exige ser superusuario para fijar un
+-- GUC propio (app.*) desde CREATE FUNCTION, y el rol dueño de Neon no lo es.
 CREATE OR REPLACE FUNCTION certificado_estado_publico(p_id uuid, p_firma text)
     RETURNS TABLE (estado text, revocado_en timestamptz, reemplazado_por uuid)
-    LANGUAGE sql STABLE SECURITY DEFINER
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
     SET search_path = pg_catalog, public
-    SET app.fase = 'verificacion'
     AS $$
+DECLARE
+    v_fase text := current_setting('app.fase', true);
+BEGIN
+    PERFORM set_config('app.fase', 'verificacion', true);
+    RETURN QUERY
         SELECT c.estado::text, c.revocado_en,
                (SELECT n.id FROM public.certificados_certificado n WHERE n.reemplaza_a_id = c.id)
           FROM public.certificados_certificado c
-         WHERE c.id = p_id AND c.firma = p_firma
-    $$;
+         WHERE c.id = p_id AND c.firma = p_firma;
+    PERFORM set_config('app.fase', COALESCE(v_fase, ''), true);
+END
+$$;
 REVOKE ALL ON FUNCTION certificado_estado_publico(uuid, text) FROM PUBLIC;
 
 DO $$

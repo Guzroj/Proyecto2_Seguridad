@@ -29,21 +29,32 @@ CREATE POLICY actividad_sistema ON cuentas_actividadhbac FOR ALL
 
 -- μ del rol: lecturas por hora activa, en [p_desde, p_hasta), de quienes tienen
 -- hoy el rol vigente. NULL si nadie con ese rol tiene lecturas.
+-- La fase se fija en el cuerpo y se restaura al salir. No se usa SET en la
+-- definición de la función: PostgreSQL exige ser superusuario para fijar un
+-- GUC propio (app.*) desde CREATE FUNCTION, y el rol dueño de Neon no lo es.
 CREATE OR REPLACE FUNCTION cuentas_media_lecturas_rol(p_rol text, p_desde timestamptz, p_hasta timestamptz)
     RETURNS double precision
-    LANGUAGE sql STABLE SECURITY DEFINER
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
     SET search_path = pg_catalog, public
-    SET app.fase = 'media_h1'
     AS $$
-        SELECT count(*)::double precision
-               / NULLIF(count(DISTINCT (a.sujeto_id, date_trunc('hour', a.en))), 0)
-          FROM public.cuentas_actividadhbac a
-         WHERE a.tipo = 'L' AND a.en >= p_desde AND a.en < p_hasta
-           AND EXISTS (SELECT 1 FROM public.cuentas_rolusuario r
-                        WHERE r.usuario_id = a.sujeto_id AND r.rol = p_rol
-                          AND r.vigente_desde <= statement_timestamp()
-                          AND (r.vigente_hasta IS NULL OR r.vigente_hasta > statement_timestamp()))
-    $$;
+DECLARE
+    v_fase text := current_setting('app.fase', true);
+    v_media double precision;
+BEGIN
+    PERFORM set_config('app.fase', 'media_h1', true);
+    SELECT count(*)::double precision
+           / NULLIF(count(DISTINCT (a.sujeto_id, date_trunc('hour', a.en))), 0)
+      INTO v_media
+      FROM public.cuentas_actividadhbac a
+     WHERE a.tipo = 'L' AND a.en >= p_desde AND a.en < p_hasta
+       AND EXISTS (SELECT 1 FROM public.cuentas_rolusuario r
+                    WHERE r.usuario_id = a.sujeto_id AND r.rol = p_rol
+                      AND r.vigente_desde <= statement_timestamp()
+                      AND (r.vigente_hasta IS NULL OR r.vigente_hasta > statement_timestamp()));
+    PERFORM set_config('app.fase', COALESCE(v_fase, ''), true);
+    RETURN v_media;
+END
+$$;
 REVOKE ALL ON FUNCTION cuentas_media_lecturas_rol(text, timestamptz, timestamptz) FROM PUBLIC;
 DO $$
 BEGIN

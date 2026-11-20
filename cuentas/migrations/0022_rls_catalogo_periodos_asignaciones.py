@@ -45,26 +45,37 @@ def _interna(tabla, nombre):
 
 
 SQL = f"""
+-- La fase se fija en el cuerpo y se restaura al salir. No se usa SET en la
+-- definición de la función: PostgreSQL exige ser superusuario para fijar un
+-- GUC propio (app.*) desde CREATE FUNCTION, y el rol dueño de Neon no lo es.
 CREATE OR REPLACE FUNCTION app_ve_finca(p_finca bigint) RETURNS boolean
-    LANGUAGE sql STABLE SECURITY DEFINER
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
     SET search_path = pg_catalog, public
-    SET app.fase = 've_finca'
     AS $$
-        SELECT app_sujeto() IS NOT NULL AND (
-               app_tiene_rol('GC') OR app_tiene_rol('AC') OR app_tiene_rol('AE')
-            OR EXISTS (SELECT 1 FROM public.catalogo_finca f
-                        WHERE f.id = p_finca AND f.propietario_id = app_sujeto())
-            OR EXISTS (SELECT 1 FROM public.mediciones_asignacion a
-                        WHERE a.finca_id = p_finca AND a.tecnico_id = app_sujeto())
-            OR EXISTS (SELECT 1 FROM public.mediciones_medicion m
-                         JOIN public.catalogo_parcela p ON p.id = m.parcela_id
-                        WHERE p.finca_id = p_finca
-                          AND (m.autor_id = app_sujeto() OR m.verificador_id = app_sujeto()))
-            OR EXISTS (SELECT 1 FROM public.mediciones_medicionactor x
-                         JOIN public.mediciones_medicion m ON m.id = x.medicion_id
-                         JOIN public.catalogo_parcela p ON p.id = m.parcela_id
-                        WHERE p.finca_id = p_finca AND x.usuario_id = app_sujeto()))
-    $$;
+DECLARE
+    v_fase text := current_setting('app.fase', true);
+    v_ok boolean;
+BEGIN
+    PERFORM set_config('app.fase', 've_finca', true);
+    SELECT app_sujeto() IS NOT NULL AND (
+           app_tiene_rol('GC') OR app_tiene_rol('AC') OR app_tiene_rol('AE')
+        OR EXISTS (SELECT 1 FROM public.catalogo_finca f
+                    WHERE f.id = p_finca AND f.propietario_id = app_sujeto())
+        OR EXISTS (SELECT 1 FROM public.mediciones_asignacion a
+                    WHERE a.finca_id = p_finca AND a.tecnico_id = app_sujeto())
+        OR EXISTS (SELECT 1 FROM public.mediciones_medicion m
+                     JOIN public.catalogo_parcela p ON p.id = m.parcela_id
+                    WHERE p.finca_id = p_finca
+                      AND (m.autor_id = app_sujeto() OR m.verificador_id = app_sujeto()))
+        OR EXISTS (SELECT 1 FROM public.mediciones_medicionactor x
+                     JOIN public.mediciones_medicion m ON m.id = x.medicion_id
+                     JOIN public.catalogo_parcela p ON p.id = m.parcela_id
+                    WHERE p.finca_id = p_finca AND x.usuario_id = app_sujeto()))
+      INTO v_ok;
+    PERFORM set_config('app.fase', COALESCE(v_fase, ''), true);
+    RETURN v_ok;
+END
+$$;
 
 {_rls("catalogo_finca")}
 {_interna("catalogo_finca", "finca")}
