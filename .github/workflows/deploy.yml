@@ -7,9 +7,10 @@ on:
     tags:
       - "v*"
 
-# Sólo se lee el código; el token OIDC lo emite GitHub para WIF.
+# contents: write permite que el job cree el tag de versión; el token OIDC
+# para WIF lo emite GitHub (id-token: write).
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 # Un despliegue a la vez (sin cancelar el que está en curso).
@@ -43,19 +44,61 @@ jobs:
     steps:
       - name: Checkout del repositorio
         uses: actions/checkout@v4
+        with:
+          # Historia y tags completos para calcular el siguiente semver.
+          fetch-depth: 0
+          fetch-tags: true
 
-      - name: Calcular tags de imagen (versión + sha corto)
+      - name: Calcular versión semántica y publicar el tag git
         id: version
         run: |
           set -euo pipefail
+          SHA="sha-${GITHUB_SHA::7}"
+
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            # Push de tag git: la versión es el propio tag (p. ej. v1.0.0).
+            # Push manual de un tag git vX.Y.Z: se usa ese tag tal cual,
+            # sin volver a bump ni crear otro tag.
             VERSION="${GITHUB_REF#refs/tags/}"
           else
-            # Push a main: versión configurable, por defecto v1.0.0.
-            VERSION="${{ vars.IMAGE_VERSION || 'v1.0.0' }}"
+            # Push a main: se calcula la siguiente versión semántica a partir
+            # del último tag v* (semilla v1.0.0 si no hay ninguno) y del tipo
+            # de cambio según Conventional Commits.
+            if git describe --tags --abbrev=0 --match 'v*' >/dev/null 2>&1; then
+              BASE="$(git describe --tags --abbrev=0 --match 'v*')"
+              RANGE="${BASE}..HEAD"
+            else
+              BASE="v1.0.0"
+              RANGE="HEAD"
+            fi
+
+            SUBJECTS="$(git log --pretty=%s "${RANGE}" 2>/dev/null || true)"
+            BODIES="$(git log --pretty=%B "${RANGE}" 2>/dev/null || true)"
+
+            if echo "${BODIES}" | grep -Eq 'BREAKING CHANGE' || echo "${SUBJECTS}" | grep -Eq '!:'; then
+              BUMP=major      # cambio incompatible -> vX+1.0.0
+            elif echo "${SUBJECTS}" | grep -Eq '^feat(\([^)]*\))?:'; then
+              BUMP=minor      # nueva funcionalidad -> vX.Y+1.0
+            else
+              BUMP=patch      # correcciones y demás -> vX.Y.Z+1
+            fi
+
+            I="${BASE#v}"
+            MAJOR="${I%%.*}"; REST="${I#*.}"; MINOR="${REST%%.*}"; PATCH="${REST#*.}"
+            case "${BUMP}" in
+              major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
+              minor) MINOR=$((MINOR+1)); PATCH=0 ;;
+              patch) PATCH=$((PATCH+1)) ;;
+            esac
+            VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+
+            # Persistir la versión como tag git. El push con GITHUB_TOKEN no
+            # re-dispara este workflow, así que no hay bucle de re-tagging.
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag "${VERSION}"
+            git push origin "${VERSION}"
           fi
-          SHA="sha-${GITHUB_SHA::7}"
+
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
           echo "sha=${SHA}" >> "${GITHUB_OUTPUT}"
           echo "Se publicarán los tags: ${VERSION} y ${SHA}"
