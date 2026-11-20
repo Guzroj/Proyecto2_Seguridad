@@ -274,6 +274,7 @@ jobs:
             --command=python \
             --args=manage.py,sellar_bitacora \
             --set-secrets=DATABASE_URL=verdeazul-db-url:latest,SECRET_KEY=verdeazul-secret-key:latest,CERTIFICADO_CLAVE_PRIVADA=verdeazul-certificado-clave:latest \
+            --set-env-vars="CERTIFICADO_CLAVES_CONFIABLES=827200b60587be8614cb64bb94e4424b5d012865d83e5b787d995b244d2f5db8 14428e8d992fa57dfb65003add2e7332a1c2372b5bd584b7b942fec7dba907c2" \
             --task-timeout=10m \
             --max-retries=0 \
             --quiet
