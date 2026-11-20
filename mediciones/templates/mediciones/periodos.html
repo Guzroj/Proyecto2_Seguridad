@@ -1,0 +1,28 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Períodos{% endblock %}
+{% block content %}
+  <h1>Períodos de medición</h1>
+  {% if es_gc %}<p><a href="{% url 'mediciones_periodo_abrir' %}">Abrir período</a></p>{% endif %}
+  <table>
+    <thead><tr><th>Período</th><th>Desde</th><th>Hasta</th><th>Estado</th>{% if es_gc %}<th>Acciones</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for p in periodos %}
+        <tr>
+          <td>{{ p.nombre }}</td>
+          <td>{{ p.fecha_inicio|date:"d/m/Y" }}</td>
+          <td>{{ p.fecha_fin|date:"d/m/Y" }}</td>
+          <td>{{ p.estado }}</td>
+          {% if es_gc %}
+            <td>
+              {% if p.estado == "ABIERTO" %}<a href="{% url 'mediciones_periodo_pasar' p.pk %}">Pasar a verificación</a>{% endif %}
+              {% if p.estado == "EN_VERIFICACION" %}<a href="{% url 'mediciones_periodo_cerrar' p.pk %}">Cerrar</a>{% endif %}
+            </td>
+          {% endif %}
+        </tr>
+      {% empty %}
+        <tr><td colspan="5">No hay períodos.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p>Un período pasa de ABIERTO a EN_VERIFICACION y luego a CERRADO; nadie lo reabre (C13).</p>
+{% endblock %}

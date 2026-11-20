@@ -1,0 +1,13 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Exportaciones{% endblock %}
+{% block content %}
+  <h1>Exportaciones del auditor</h1>
+  <p>Solo el auditor externo, dentro de su ventana de auditoría (C5), exporta. Cada archivo lleva marca de agua
+     con su cuenta y la fecha, y queda en la bitácora. Más de {{ limite_h3 }} registros en 24 horas exigen
+     segundo factor reciente (H3).</p>
+  <ul>
+    {% for nombre, conjunto in conjuntos %}
+      <li><a href="{% url 'exportaciones_exportar' nombre %}">{{ conjunto.titulo }}</a></li>
+    {% endfor %}
+  </ul>
+{% endblock %}

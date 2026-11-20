@@ -1,0 +1,8 @@
+Thu Nov 19 19:43:17 UTC 2026
+HTTP/1.1 200 OK
+x-frame-options: DENY
+strict-transport-security: max-age=31536000; includeSubDomains
+x-content-type-options: nosniff
+referrer-policy: same-origin
+server: Google Frontend
+http://... -> 302 Location: https://verdeazul-444812071990.us-east1.run.app/admin/login//nC:/Program Files/Git/gestion/ -> 404/n

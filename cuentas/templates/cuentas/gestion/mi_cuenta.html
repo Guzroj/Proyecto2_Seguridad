@@ -1,0 +1,21 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Mi cuenta{% endblock %}
+{% block content %}
+  <h1>Mi cuenta</h1>
+  <dl>
+    <dt>Usuario</dt><dd>{{ user.username }}</dd>
+    <dt>Nombre</dt><dd>{{ user.get_full_name|default:"—" }}</dd>
+    <dt>Estado</dt><dd>{{ user.estado }}</dd>
+    <dt>Roles vigentes</dt><dd>{{ roles|join:", "|default:"ninguno" }}</dd>
+  </dl>
+  <h2>Mis sesiones</h2>
+  <table>
+    <thead><tr><th>Inicio</th><th>Última actividad</th><th>Cierre</th><th>Motivo</th></tr></thead>
+    <tbody>
+      {% for s in sesiones %}
+        <tr><td>{{ s.iniciada_en }}</td><td>{{ s.ultima_actividad }}</td>
+            <td>{{ s.cerrada_en|default:"abierta" }}</td><td>{{ s.get_motivo_cierre_display|default:"—" }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

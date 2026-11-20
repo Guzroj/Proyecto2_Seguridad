@@ -1,0 +1,53 @@
+{
+  "contenido": {
+    "certificado": {
+      "emitido_en": "2026-11-19T19:42:57.481770Z",
+      "id": "bd0faee9-2da8-4626-be0c-9c000caa9727",
+      "reemplaza_a": null
+    },
+    "emisor": {
+      "huella_clave": "31c15a5f71810029282ff061295b5843a44a0ace33c0714e84386b1aa7d0af45",
+      "nombre": "Verdeazul Carbono S.A."
+    },
+    "finca": {
+      "id": 1,
+      "nombre": "La Esperanza",
+      "ubicacion": "San Carlos"
+    },
+    "medicion": {
+      "altura_promedio_m": "11.00",
+      "aprobada_en": "2026-11-19T19:42:57.474398Z",
+      "dap_promedio_cm": "22.50",
+      "id": "fc9b8f4f-5d46-4f3d-9355-85660f423522",
+      "numero_arboles": 120,
+      "version_de": null
+    },
+    "metodo": "Chave et al. (2014), árbol promedio; carbono 47 % (IPCC 2006); CO2 = C·44/12",
+    "parcela": {
+      "area_ha": "1.5000",
+      "codigo": "P1",
+      "huella_geometria": "033aef01b42cb77aed60ebfa8efa35616bfa51a846882fcc5213c365bd2e5bc1",
+      "id": 1,
+      "version_geometria": 1
+    },
+    "periodo": {
+      "fin": "2026-06-30",
+      "id": 1,
+      "inicio": "2026-01-01",
+      "nombre": "2026-A"
+    },
+    "propietario": {
+      "cuenta": 5,
+      "identificacion": "1-1111-1111",
+      "nombre_completo": "Patricia Fallas Mora"
+    },
+    "toneladas_co2": "48.2737"
+  },
+  "firma": {
+    "algoritmo": "Ed25519",
+    "clave_publica": "SBgxkG9GI47rT5aFBSMWEo8ZMCScWwSMX7BzooW67W4=",
+    "huella_clave": "31c15a5f71810029282ff061295b5843a44a0ace33c0714e84386b1aa7d0af45",
+    "valor": "Ha8WbmwlrnL47oea7cBPoONZ1SOYooKC99+lH7heedbsz387OCUO/Txs/IYUJShztqhh8fBUGweN4sQv4MoOAw=="
+  },
+  "formato": "verdeazul-certificado/1"
+}

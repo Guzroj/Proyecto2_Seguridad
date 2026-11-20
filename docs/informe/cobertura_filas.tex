@@ -1,0 +1,48 @@
+1 & TC & O1a & L [C6, H1] \ddag{} & \path{catalogo/pantallas}; \path{mediciones/pantallas} · C6, HBAC & \path{test_condiciones::C6C8C10Tests}\\
+3 & TC & O2 & L & \path{mediciones/pantallas} & \path{cuentas/test_rls_dominio::LecturaCatalogoTests}\\
+4 & TC & O3 & L [C8] & \path{mediciones/pantallas} · C8 & \path{test_condiciones::C6C8C10Tests}\\
+5 & TC & O4 & L [C10, H1] \ddag{}; CR [C1, H4]; MO [C1, H4]; EV [C1, H4] & \path{mediciones/services} · C10, HBAC, C1, H4 & \path{test_condiciones::C1Tests}\\
+6 & TC & O5 & SO [C11]; L [C12] & \path{mediciones/services} · C11, C12 & \path{test_condiciones::C11C12Tests}\\
+8 & TC & O7a & L [C21] & \path{cuentas/pantallas}; \path{mediciones/pantallas} · C21 & \path{test_condiciones::C21C22Tests}\\
+11 & TC & O7d & CR [C21] & \path{cuentas/mfa} · C21 & \path{test_condiciones::C21C22Tests}\\
+2, 7, 9, 10, 12, 13 & TC & O1b, O6, O7b, O7c, O8, O9 & --- (denegada) & \path{reglas:decidir} (RG1) y RLS & \path{test_cobertura::CeldaPorCeldaTests}\\
+\midrule
+14 & VF & O1a & L [C9, H1] \ddag{} & \path{catalogo/pantallas}; \path{mediciones/pantallas} · C9, HBAC & \path{test_condiciones::C9Tests}\\
+16 & VF & O2 & L & \path{mediciones/pantallas} & \path{cuentas/test_rls_dominio::LecturaCatalogoTests}\\
+18 & VF & O4 & L [C9, H1] \ddag{}; AP [C2, H4]; DV [C2, H4] & \path{mediciones/services} · C9, HBAC, C2, H4 & \path{test_condiciones::C9Tests}\\
+21 & VF & O7a & L [C21] & \path{cuentas/pantallas}; \path{mediciones/pantallas} · C21 & \path{test_condiciones::C21C22Tests}\\
+24 & VF & O7d & CR [C21] & \path{cuentas/mfa} · C21 & \path{test_condiciones::C21C22Tests}\\
+15, 17, 19, 20, 22, 23, 25, 26 & VF & O1b, O3, O5, O6, O7b, O7c, O8, O9 & --- (denegada) & \path{reglas:decidir} (RG1) y RLS & \path{test_cobertura::CeldaPorCeldaTests}\\
+\midrule
+27 & GC & O1a & L [H1] \ddag{} & \path{catalogo/pantallas}; \path{mediciones/pantallas} · HBAC & \path{test_hbac::H1Tests}\\
+29 & GC & O2 & L; AB [C13]; TV [C13]; CI [C13] & \path{mediciones/services} · C13 & \path{test_condiciones::C13Tests}\\
+30 & GC & O3 & L & \path{mediciones/pantallas} & \path{cuentas/test_rls_dominio::LecturaCatalogoTests}\\
+31 & GC & O4 & L [H1] \ddag{}; SI [C16] & \path{cuentas/services} · HBAC, C16 & \path{test_condiciones::C16Tests}\\
+32 & GC & O5 & L; AU [C3]; RE [C3] & \path{mediciones/services} · C3 & \path{test_condiciones::C3Tests}\\
+33 & GC & O6 & L \ddag{} & \path{certificados/pantallas} · HBAC & \path{test_hbac::H2Tests}\\
+34 & GC & O7a & L; AU [C14] & \path{cuentas/services} · C14 & \path{test_condiciones::C14C15Tests}\\
+35 & GC & O7b & L; AU [C7]; RE [C7] & \path{cuentas/services} · C7 & \path{test_condiciones::C7Tests}\\
+37 & GC & O7d & L [C17]; CR [C21]; AU [C17]; RE [C17] & \path{cuentas/mfa}; \path{cuentas/services} · C17, C21 & \path{test_condiciones::C17C18Tests}\\
+38 & GC & O8 & L & \path{bitacora/pantallas} & \path{bitacora/test_bitacora::PermisosTests}\\
+39 & GC & O9 & L; RS [C22] & \path{cuentas/services} · C22 & \path{test_condiciones::C21C22Tests}\\
+28, 36 & GC & O1b, O7c & --- (denegada) & \path{reglas:decidir} (RG1) y RLS & \path{test_cobertura::CeldaPorCeldaTests}\\
+\midrule
+40 & AC & O1a & L [H1] \ddag{}; CR [C20]; MO [C20]; BA [C20] & \path{catalogo/services} · HBAC, C20 & \path{test_condiciones::C20Tests}\\
+41 & AC & O1b & L [H1] \ddag{}; CR [C20]; MO [C20] & \path{catalogo/services} · HBAC, C20 & \path{test_condiciones::C20Tests}\\
+42 & AC & O2 & L & \path{mediciones/pantallas} & \path{cuentas/test_rls_dominio::LecturaCatalogoTests}\\
+43 & AC & O3 & L; CR [C19]; MO [C19] & \path{mediciones/services} · C19 & \path{test_condiciones::C19Tests}\\
+47 & AC & O7a & L; CR [C15]; MO [C15]; BA [C15] & \path{cuentas/services} · C15 & \path{test_condiciones::C14C15Tests}\\
+48 & AC & O7b & L; AR [C7]; RR [C7] & \path{cuentas/services} · C7 & \path{test_condiciones::C7Tests}\\
+49 & AC & O7c & L; CR [C18]; RV & \path{cuentas/services} · C18 & \path{test_condiciones::C17C18Tests}\\
+50 & AC & O7d & L; SO [C17]; CR [C21] & \path{cuentas/services}; \path{cuentas/mfa} · C17, C21 & \path{test_condiciones::C17C18Tests}\\
+44, 45, 46, 51, 52 & AC & O4, O5, O6, O8, O9 & --- (denegada) & \path{reglas:decidir} (RG1) y RLS & \path{test_cobertura::CeldaPorCeldaTests}\\
+\midrule
+53--65 & AE & las 13: O1a, O1b, O2, O3, O4, O5, O6, O7a, O7b, O7c, O7d, O8, O9 & L [C5]; X [C5, H3] en cada una & \path{autorizacion/cliente}; \path{exportaciones/servicios}; pantalla de cada objeto · C5, HBAC & \path{test_condiciones::C5Tests}; \path{exportaciones/test_exportaciones::ExportarTests}; \path{test_hbac::H3Tests}\\
+\midrule
+66 & PF & O1a & L [C4] & \path{catalogo/pantallas}; \path{mediciones/pantallas} · C4 & \path{test_condiciones::C4Tests}\\
+67 & PF & O1b & L [C4] & \path{catalogo/pantallas} · C4 & \path{test_condiciones::C4Tests}\\
+70 & PF & O4 & L [C4] & \path{mediciones/pantallas} · C4 & \path{test_condiciones::C4Tests}\\
+72 & PF & O6 & L [C4] & \path{certificados/pantallas} · C4 & \path{test_condiciones::C4Tests}\\
+73 & PF & O7a & L [C21] & \path{cuentas/pantallas}; \path{mediciones/pantallas} · C21 & \path{test_condiciones::C21C22Tests}\\
+76 & PF & O7d & CR [C21] & \path{cuentas/mfa} · C21 & \path{test_condiciones::C21C22Tests}\\
+68, 69, 71, 74, 75, 77, 78 & PF & O2, O3, O5, O7b, O7c, O8, O9 & --- (denegada) & \path{reglas:decidir} (RG1) y RLS & \path{test_cobertura::CeldaPorCeldaTests}\\

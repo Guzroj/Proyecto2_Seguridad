@@ -1,0 +1,17 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Autorizar restablecimiento{% endblock %}
+{% block content %}
+  <h1>Autorizar el restablecimiento de {{ r.usuario.username }}</h1>
+  <p>Pedido por {{ r.solicitado_por.username }} el {{ r.solicitado_en }}. Motivo: {{ r.motivo }}</p>
+  <h2>Factores que se invalidarán</h2>
+  <ul>
+    {% for f in factores %}<li>{{ f.tipo }}: creado {{ f.creado_en }}, último uso {{ f.usado_en|default:"nunca" }}</li>
+    {% empty %}<li>La cuenta no tiene factores registrados.</li>{% endfor %}
+  </ul>
+  <p>Antes de autorizar, verifica la identidad de la persona fuera del sistema (hace 7 días o menos).
+     Al autorizar se cierran todas sus sesiones.</p>
+  <form method="post">{% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Autorizar</button>
+  </form>
+{% endblock %}

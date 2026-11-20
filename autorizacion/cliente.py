@@ -1,171 +1,130 @@
-"""
-Cliente HTTP del motor de autorización (el "gancho real" de Persona 3).
-
-Este módulo implementa la MISMA firma que los ganchos de nucleo/ganchos.py, para
-que Django pueda llamar al servicio autorizador sin tocar los servicios. Cuando
-Persona 3 active el motor, basta con apuntar en settings:
-
-    VERDEAZUL_GANCHOS = {
-        "autorizar":        "autorizacion.cliente.autorizar",
-        "usuarios_con_rol": "autorizacion.cliente.usuarios_con_rol",
-        ...
-    }
-
-La frontera de confianza es la red: destino privado de Cloud Run
-(--no-allow-unauthenticated) y token OIDC del metadata server como credencial.
-Regla de oro: cualquier fallo (URL sin configurar, timeout, error HTTP no
-previsto) se traduce en DENEGAR, nunca en conceder.
-
-Requiere `httpx`, que ya está en requirements.txt (imagen de Django).
-
-Este módulo no se importa desde autorizacion/app.py: el motor no depende de
-Django.
-"""
-
 import logging
 import os
-from urllib.parse import quote
 
 import httpx
-from django.contrib.auth import get_user_model
+from django.conf import settings
 
+from nucleo import ganchos
 from nucleo.errores import AccesoDenegado, FueraDeAlcance, ReautenticacionRequerida
+
+from . import matriz, pep
 
 log = logging.getLogger("verdeazul.autorizacion")
 
-# Token de identidad de la cuenta de servicio del contenedor (metadata server).
 URL_IDENTIDAD = (
     "http://metadata.google.internal/computeMetadata/v1/instance/"
     "service-accounts/default/identity"
 )
-
-# Tiempo máximo de espera: una autorización colgada bloquea la operación de
-# negocio, así que se corta pronto y se deniega (fallo cerrado).
-TIEMPO_ESPERA = 5.0
+# Una autorización colgada bloquea la operación: se corta pronto y se niega.
+TIEMPO_ESPERA = 3.0
 
 
 def _url_motor() -> str:
-    """URL interna de verdeazul-autorizador, sin barra final."""
     return os.environ.get("AUTORIZADOR_URL", "").strip().rstrip("/")
 
 
-def _token_identidad(audiencia: str) -> str:
-    """Pide al metadata server un token OIDC con `audiencia` (la URL del motor)."""
-    respuesta = httpx.get(
-        URL_IDENTIDAD,
-        params={"audience": audiencia},
-        headers={"Metadata-Flavor": "Google"},
-        timeout=TIEMPO_ESPERA,
-    )
+def _modo_autenticacion() -> str:
+    return os.environ.get("AUTORIZADOR_AUTENTICACION", "oidc").strip().lower()
+
+
+def _http() -> httpx.Client:
+    """Punto único de salida HTTP (las pruebas lo sustituyen por un transporte falso)."""
+    return httpx.Client(timeout=TIEMPO_ESPERA, follow_redirects=False)
+
+
+def _encabezados(cliente: httpx.Client, base: str) -> dict:
+    modo = _modo_autenticacion()
+    if modo == "ninguna":
+        if not settings.DEBUG:
+            raise AccesoDenegado("Motor sin autenticación fuera de desarrollo: se niega.")
+        return {}
+    if modo != "oidc":
+        raise AccesoDenegado("AUTORIZADOR_AUTENTICACION desconocida: se niega.")
+    respuesta = cliente.get(URL_IDENTIDAD, params={"audience": base}, headers={"Metadata-Flavor": "Google"})
     respuesta.raise_for_status()
-    return respuesta.text.strip()
+    return {"Authorization": f"Bearer {respuesta.text.strip()}"}
 
 
-def _detalle(respuesta: httpx.Response) -> str:
-    """Mensaje del motor; si no viene, uno genérico (sin filtrar cuerpos)."""
+def consultar(solicitud: dict) -> dict:
+    """Devuelve la decisión del motor como dict; ante cualquier falla, una negación."""
+    base = _url_motor()
+    if not base:
+        return {"resultado": "NIEGA", "regla": "RG5", "motivo": "AUTORIZADOR_URL no está configurada."}
     try:
-        detalle = respuesta.json().get("detail")
-    except (ValueError, AttributeError):
-        detalle = None
-    return detalle or f"El motor de autorización respondió {respuesta.status_code}."
+        with _http() as cliente:
+            encabezados = _encabezados(cliente, base)
+            respuesta = cliente.post(f"{base}/autorizar", json=solicitud, headers=encabezados)
+        if respuesta.status_code != 200:
+            raise ValueError(f"el motor respondió {respuesta.status_code}")
+        decision = respuesta.json()
+        if not isinstance(decision, dict) or not isinstance(decision.get("resultado"), str):
+            raise ValueError("respuesta sin resultado")
+        return decision
+    except AccesoDenegado as exc:
+        return {"resultado": "NIEGA", "regla": "RG5", "motivo": str(exc)}
+    except (httpx.HTTPError, OSError, ValueError) as exc:
+        log.warning("Motor de autorización no disponible o respuesta inválida: %s", exc)
+        return {"resultado": "NIEGA", "regla": "RG5", "motivo": "Motor de autorización no disponible."}
 
 
-def _identidad(usuario) -> dict:
-    """Identifica al sujeto por su PK; nunca envía el objeto ni sus datos."""
-    datos = {"id": str(getattr(usuario, "pk", usuario))}
-    nombre = getattr(usuario, "get_username", None)
-    if callable(nombre):
-        datos["username"] = nombre()
-    return datos
+def _decidir(usuario, accion: str, recurso=None, contexto: dict | None = None) -> dict:
+    """Pregunta al motor, aplica los efectos HBAC y traduce la negación a su excepción."""
+    from cuentas import hbac
+
+    try:
+        solicitud = pep.construir_solicitud(usuario, accion, recurso, contexto)
+    except Exception as exc:  # RG5: sin atributos (p. ej., RLS oculta una fila relacionada) no se decide
+        log.warning("El PEP no pudo leer los atributos de %s: %s", accion, type(exc).__name__)
+        raise AccesoDenegado("No se pudieron leer los atributos: se niega.") from exc
+    decision = consultar(solicitud)
+    hbac.aplicar_o_negar(usuario, accion, solicitud, decision)
+    resultado = decision.get("resultado")
+    motivo = str(decision.get("motivo") or "Acceso denegado.")[:300]
+    if resultado == "CONCEDE":
+        _registrar_lectura(usuario, accion, recurso)
+        return decision
+    if resultado == "FUERA_DE_ALCANCE":
+        raise FueraDeAlcance("No encontrado.")
+    if resultado == "REAUTENTICAR":
+        raise ReautenticacionRequerida(motivo)
+    raise AccesoDenegado(motivo)
 
 
-def _simple(valor):
-    """Convierte modelos, dicts y listas a JSON simple (IDs, no objetos)."""
-    if valor is None or isinstance(valor, (bool, int, float, str)):
-        return valor
-    if isinstance(valor, dict):
-        return {str(clave): _simple(v) for clave, v in valor.items()}
-    if isinstance(valor, (list, tuple, set)):
-        return [_simple(v) for v in valor]
-    if hasattr(valor, "pk") and hasattr(valor, "_meta"):
-        return {"tipo": valor._meta.model_name, "id": str(valor.pk)}
-    return str(valor)
+# RG4: toda lectura concedida de O1, O4, O6 y O8 se registra en la bitácora; si el evento no
+# puede registrarse, la lectura se niega. (Las escrituras las registran los servicios, las
+# exportaciones su propio servicio y las negaciones nucleo.transicion y autorizar_lectura.)
+LECTURAS_RG4 = frozenset({matriz.O1A, matriz.O1B, matriz.O4, matriz.O6, matriz.O8})
 
 
-# ===========================================================================
-# Ganchos (mismas firmas que nucleo.ganchos)
-# ===========================================================================
+def _registrar_lectura(usuario, accion: str, recurso) -> None:
+    objeto, operacion = matriz.ACCIONES.get(accion, (None, None))
+    if operacion != "L" or objeto not in LECTURAS_RG4:
+        return
+    es_modelo = hasattr(recurso, "pk") and hasattr(recurso, "_meta")
+    try:
+        ganchos.registrar_evento(
+            actor=usuario, accion=accion,
+            recurso_tipo=recurso._meta.model_name if es_modelo else accion.split(":")[0],
+            recurso_id=str(recurso.pk) if es_modelo else "", resultado="CONCEDIDO",
+            detalle="lista" if accion.endswith(":listar") else "",
+        )
+    except Exception as exc:
+        log.warning("No se pudo registrar la lectura %s en la bitácora: %s", accion, type(exc).__name__)
+        raise AccesoDenegado("No se pudo registrar la lectura en la bitácora: se niega (RG4).") from exc
+
+
 def autorizar(usuario, accion: str, recurso=None, contexto: dict | None = None) -> None:
+    """Gancho nucleo.ganchos.autorizar. No devuelve nada si concede; si no, lanza."""
+    _decidir(usuario, accion, recurso, contexto)
+
+
+def autorizar_lista(usuario, accion: str) -> list[str]:
     """
-    Pregunta al motor si `usuario` puede ejecutar `accion` sobre `recurso`.
-
-    No devuelve nada si concede. Si niega, lanza las mismas excepciones de
-    nucleo/errores.py que el resto del sistema:
-      403 -> AccesoDenegado · 404 -> FueraDeAlcance · 401 -> ReautenticacionRequerida
-    Un error de red o de configuración también deniega (fallo cerrado).
+    "<objeto>:listar": si concede, devuelve los roles con los que el sujeto puede
+    listar (el PEP filtra la consulta con el alcance de cada uno). Si no, lanza.
     """
-    base = _url_motor()
-    if not base:
-        raise AccesoDenegado("AUTORIZADOR_URL no está configurada: se deniega por defecto.")
-
-    try:
-        token = _token_identidad(base)
-        respuesta = httpx.post(
-            f"{base}/autorizar",
-            json={
-                "usuario": _identidad(usuario),
-                "accion": accion,
-                "recurso": _simple(recurso),
-                "contexto": _simple(contexto or {}),
-            },
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=TIEMPO_ESPERA,
-        )
-    except (httpx.HTTPError, OSError) as exc:
-        log.warning("Motor de autorización inalcanzable: %s", exc)
-        raise AccesoDenegado(
-            "Motor de autorización inalcanzable: se deniega por defecto."
-        ) from exc
-
-    if respuesta.status_code == 401:
-        raise ReautenticacionRequerida(_detalle(respuesta))
-    if respuesta.status_code == 403:
-        raise AccesoDenegado(_detalle(respuesta))
-    if respuesta.status_code == 404:
-        raise FueraDeAlcance(_detalle(respuesta))
-    if 200 <= respuesta.status_code < 300:
-        return None
-    raise AccesoDenegado(_detalle(respuesta))
-
-
-def usuarios_con_rol(rol: str):
-    """
-    QuerySet de usuarios ACTIVOS con el rol vigente `rol`.
-
-    Devuelve un QuerySet (no una lista) porque los servicios hacen
-    .filter(pk=...) y .exclude(pk__in=...) sobre el resultado. Si el motor no
-    responde, devuelve un QuerySet vacío (fallo cerrado).
-    """
-    Usuario = get_user_model()
-    base = _url_motor()
-    if not base:
-        log.warning("AUTORIZADOR_URL no configurada: sin usuarios para el rol %s.", rol)
-        return Usuario.objects.none()
-
-    try:
-        token = _token_identidad(base)
-        respuesta = httpx.get(
-            f"{base}/usuarios_con_rol/{quote(rol, safe='')}",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=TIEMPO_ESPERA,
-        )
-        respuesta.raise_for_status()
-        ids = respuesta.json().get("usuarios", [])
-        if not isinstance(ids, list):
-            raise ValueError("la respuesta no trae una lista 'usuarios'")
-        ids = [i for i in ids if isinstance(i, (int, str))]
-    except (httpx.HTTPError, OSError, ValueError, AttributeError) as exc:
-        log.warning("No se pudo consultar el rol %s en el motor: %s", rol, exc)
-        return Usuario.objects.none()
-
-    return Usuario.objects.filter(pk__in=ids, is_active=True)
+    decision = _decidir(usuario, accion)
+    roles = decision.get("roles")
+    if not isinstance(roles, list) or not roles or not all(isinstance(r, str) for r in roles):
+        raise AccesoDenegado("Respuesta del motor sin roles para la lista: se niega.")
+    return roles

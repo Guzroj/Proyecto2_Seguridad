@@ -9,8 +9,10 @@ Mismo patrón que mediciones/services.py: bloquear -> autorizar -> invariantes -
 from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
+from shapely.errors import GEOSException
+from shapely.geometry import shape
 
 from nucleo import ganchos
 from nucleo.acciones import Accion
@@ -54,12 +56,44 @@ def _area(valor) -> Decimal:
 
 
 def _geometria(valor) -> dict:
+    """Lista blanca de la estructura GeoJSON y, con shapely, que sea un polígono válido con área."""
     try:
         validar_poligono_geojson(valor)
     except ValidationError as exc:
         raise DatoInvalido(f"geometria: {exc.messages[0]}")
-    # PENDIENTE (C20): rechazar traslape con otra parcela vigente -> requiere PostGIS.
+    poligono = _poligono(valor)
+    if poligono.is_empty or not poligono.is_valid or poligono.area <= 0:
+        raise DatoInvalido("geometria: el polígono se cruza consigo mismo o no tiene área.")
     return valor
+
+
+def _poligono(geojson: dict):
+    try:
+        return shape(geojson)
+    except (ValueError, TypeError, AttributeError, GEOSException):
+        raise DatoInvalido("geometria: no es un polígono válido.")
+
+
+def _exigir_sin_traslape(geojson: dict, parcela_propia=None):
+    """
+    C20: la geometría nueva no se traslapa con la versión vigente de OTRA parcela activa
+    (interiores que se cruzan; compartir solo un borde está permitido: son vecinas).
+    Se valida en el servicio con shapely en vez de en la base con PostGIS (D2).
+    Un bloqueo de transacción serializa los cambios de geometría: dos altas simultáneas
+    no pueden pasar ambas el chequeo.
+    """
+    if connection.vendor == "postgresql":
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(hashtext('catalogo_geometrias'))")
+    nueva = _poligono(geojson)
+    vigentes = (ParcelaVersion.objects.filter(vigente_hasta__isnull=True, parcela__estado=EstadoCatalogo.ACTIVA)
+                .select_related("parcela__finca"))
+    if parcela_propia is not None:
+        vigentes = vigentes.exclude(parcela_id=parcela_propia.pk)
+    for version in vigentes:
+        if nueva.relate_pattern(_poligono(version.geometria), "T********"):  # interior ∩ interior ≠ ∅
+            raise DatoInvalido(f"C20: la geometría se traslapa con la parcela {version.parcela.codigo} "
+                               f"de la finca {version.parcela.finca.nombre}.")
 
 
 # ---------------------------------------------------------------------------
@@ -111,26 +145,60 @@ def dar_baja_finca(usuario, finca) -> Finca:
     return finca
 
 
-@transicion(Accion.PROPIETARIO_REGISTRAR_DATOS, "datospropietario")
 def registrar_datos_propietario(usuario, propietario, *, nombre_completo: str, identificacion: str,
                                 telefono: str = "", correo: str = "") -> DatosPropietario:
-    ganchos.autorizar(usuario, Accion.PROPIETARIO_REGISTRAR_DATOS, None, {"propietario": propietario})
+    """
+    AC·O1b. La primera vez CREA los datos (CR, propietario:crear_datos); si ya
+    existen, los MODIFICA (MO, propietario:registrar_datos). Cada camino se
+    autoriza con su propia celda de la matriz.
+    """
+    campos = {"nombre_completo": nombre_completo, "identificacion": identificacion,
+              "telefono": telefono, "correo": correo}
+    if DatosPropietario.objects.filter(usuario_id=propietario.pk).exists():
+        return _modificar_datos_propietario(usuario, propietario, **campos)
+    return _crear_datos_propietario(usuario, propietario, **campos)
+
+
+def _valores_propietario(propietario, nombre_completo, identificacion, telefono, correo) -> dict:
     if not ganchos.usuarios_con_rol("PF").filter(pk=propietario.pk).exists():
         raise DatoInvalido("Solo se registran datos de propietarios del catálogo (C20).")
-    valores = {
+    return {
         "nombre_completo": _texto(nombre_completo, "nombre_completo", 200),
         "identificacion": _texto(identificacion, "identificacion", 30),
         "telefono": _texto(telefono, "telefono", 30, requerido=False),
         "correo": _texto(correo, "correo", 254, requerido=False),
     }
+
+
+@transicion(Accion.PROPIETARIO_CREAR_DATOS, "datospropietario")
+def _crear_datos_propietario(usuario, propietario, **campos) -> DatosPropietario:
+    ganchos.autorizar(usuario, Accion.PROPIETARIO_CREAR_DATOS, None, {"propietario": propietario})
+    valores = _valores_propietario(propietario, **campos)
     try:
         with transaction.atomic():
-            datos, creado = DatosPropietario.objects.update_or_create(usuario=propietario, defaults=valores)
+            datos = DatosPropietario.objects.create(usuario=propietario, **valores)
+    except IntegrityError:
+        # Otra persona los creó al mismo tiempo, o la identificación ya es de otro propietario.
+        raise DatoInvalido("Los datos ya existen o esa identificación ya está registrada.")
+    # Sin datos personales en la bitácora (Ley 8968): solo qué cambió, no el valor.
+    _evento(usuario, Accion.PROPIETARIO_CREAR_DATOS, datos, despues={"campos": sorted(valores)})
+    return datos
+
+
+@transicion(Accion.PROPIETARIO_REGISTRAR_DATOS, "datospropietario")
+def _modificar_datos_propietario(usuario, propietario, **campos) -> DatosPropietario:
+    ganchos.autorizar(usuario, Accion.PROPIETARIO_REGISTRAR_DATOS, None, {"propietario": propietario})
+    valores = _valores_propietario(propietario, **campos)
+    datos = DatosPropietario.objects.select_for_update().get(usuario_id=propietario.pk)
+    cambiados = sorted(c for c, v in valores.items() if getattr(datos, c) != v)
+    for campo, valor in valores.items():
+        setattr(datos, campo, valor)
+    try:
+        with transaction.atomic():
+            datos.save()
     except IntegrityError:
         raise DatoInvalido("Esa identificación ya está registrada para otra persona.")
-    # Sin datos personales en la bitácora (Ley 8968): solo qué cambió, no el valor.
-    _evento(usuario, Accion.PROPIETARIO_REGISTRAR_DATOS, datos,
-            despues={"creado": creado, "campos": sorted(valores)})
+    _evento(usuario, Accion.PROPIETARIO_REGISTRAR_DATOS, datos, despues={"campos": cambiados})
     return datos
 
 
@@ -146,9 +214,11 @@ def crear_parcela(usuario, finca, *, codigo: str, area_ha, geometria: dict) -> P
     codigo = _texto(codigo, "codigo", 30)
     if Parcela.objects.filter(finca=finca, codigo=codigo).exists():
         raise DatoInvalido("Ya existe una parcela con ese código en la finca.")
+    area, geo = _area(area_ha), _geometria(geometria)
+    _exigir_sin_traslape(geo)  # C20
     parcela = Parcela.objects.create(finca=finca, codigo=codigo)
     ParcelaVersion.objects.create(
-        parcela=parcela, numero=1, area_ha=_area(area_ha), geometria=_geometria(geometria),
+        parcela=parcela, numero=1, area_ha=area, geometria=geo,
         vigente_desde=timezone.now(), creada_por=usuario,
     )
     _evento(usuario, Accion.PARCELA_CREAR, parcela, despues={"codigo": codigo, "version": 1})
@@ -163,6 +233,7 @@ def modificar_geometria(usuario, parcela, *, area_ha, geometria: dict) -> Parcel
         raise TransicionInvalida("La parcela está de baja.")
     actual = ParcelaVersion.objects.select_for_update().get(parcela=parcela, vigente_hasta__isnull=True)
     area, geo = _area(area_ha), _geometria(geometria)
+    _exigir_sin_traslape(geo, parcela_propia=parcela)  # C20: contra las demás, no contra sí misma
     ahora = timezone.now()
     actual.vigente_hasta = ahora  # se cierra, nunca se sobrescribe
     actual.save(update_fields=["vigente_hasta"])

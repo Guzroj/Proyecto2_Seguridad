@@ -1,0 +1,7 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}{{ titulo }}{% endblock %}
+{% block content %}
+  <h1>{{ titulo }}</h1>
+  {% if mensaje %}<p>{{ mensaje }}</p>{% endif %}
+  <p><a href="{% url 'inicio' %}">Volver al inicio</a></p>
+{% endblock %}

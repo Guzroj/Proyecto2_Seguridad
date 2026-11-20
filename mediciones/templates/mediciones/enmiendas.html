@@ -1,0 +1,30 @@
+{% extends "allauth/layouts/base.html" %}
+{% block head_title %}Enmiendas{% endblock %}
+{% block content %}
+  <h1>Enmiendas</h1>
+  <p>Única vía para corregir una medición aprobada o de un período cerrado: la solicita el técnico autor,
+     la autoriza un GC distinto y sin participación previa, y la versión corregida pasa por un verificador nuevo.</p>
+  <table>
+    <thead><tr><th>#</th><th>Medición</th><th>Solicitante</th><th>Justificación</th><th>Estado</th><th>Resuelta por</th>{% if es_gc %}<th>Acciones</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for fila in filas %}
+        <tr>
+          <td>{{ fila.e.pk }}</td>
+          <td><a href="{% url 'mediciones_medicion' fila.e.medicion_original_id %}">{{ fila.e.medicion_original_id|stringformat:"s"|slice:":8" }}</a></td>
+          <td>{{ fila.solicitante }}</td>
+          <td>{{ fila.e.justificacion|truncatechars:80 }}</td>
+          <td>{{ fila.e.estado }}{% if fila.e.version_id %} (<a href="{% url 'mediciones_medicion' fila.e.version_id %}">versión</a>){% endif %}</td>
+          <td>{{ fila.autorizador }}</td>
+          {% if es_gc %}
+            <td>{% if fila.e.estado == SOLICITADA %}
+              <a href="{% url 'mediciones_enmienda_autorizar' fila.e.pk %}">Autorizar</a> ·
+              <a href="{% url 'mediciones_enmienda_rechazar' fila.e.pk %}">Rechazar</a>
+            {% endif %}</td>
+          {% endif %}
+        </tr>
+      {% empty %}
+        <tr><td colspan="7">No hay enmiendas para mostrar.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

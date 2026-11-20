@@ -1,26 +1,3 @@
--- ===========================================================================
--- db/grant_after_migrate.sql
--- ---------------------------------------------------------------------------
--- Otorga privilegios DML al rol de aplicación (`app_runtime`) sobre TODAS las
--- tablas y secuencias del esquema `public`.
---
--- ¿CUÁNDO SE EJECUTA?
---   Como rol DUEÑO, DESPUÉS de CADA `python manage.py migrate`.
---   Motivo: una migración puede crear tablas y secuencias nuevas, y los GRANT
---   de `db/roles_rls.sql` no se aplican retroactivamente.
---
---   Comando habitual tras migrar:
---     python manage.py migrate
---     psql "$DATABASE_URL_DUENO" -f db/grant_after_migrate.sql
---
--- Es IDEMPOTENTE: repetirlo no da error ni concede privilegios de más.
---
--- NOTA: si el rol dueño que ejecuta `migrate` es el mismo que ejecuta este
--- script, `ALTER DEFAULT PRIVILEGES` (ver `db/roles_rls.sql`) ya cubriría las
--- tablas futuras y este archivo solo sería una red de seguridad. Se mantiene
--- porque es explícito, verificable y no depende de quién migró.
--- ===========================================================================
-
 DO $$
 DECLARE
     v_rol      text := 'app_runtime';          -- rol de la aplicación en runtime
@@ -36,12 +13,6 @@ BEGIN
             v_rol, v_rol;
     END IF;
 
-    -- -----------------------------------------------------------------------
-    -- 1) Tablas: SELECT, INSERT, UPDATE, DELETE
-    -- -----------------------------------------------------------------------
-    -- Recorremos pg_tables para incluir tanto las tablas de la aplicación como
-    -- las de Django/contrib (auth_*, django_session, ...): la app las necesita
-    -- para login, sesiones y admin. RLS no se toca aquí (eso es de roles_rls.sql).
     FOR v_tabla IN
         SELECT tablename
           FROM pg_tables
@@ -54,11 +25,6 @@ BEGIN
         );
     END LOOP;
 
-    -- -----------------------------------------------------------------------
-    -- 2) Secuencias: USAGE y SELECT (necesarios para nextval en los INSERT)
-    -- -----------------------------------------------------------------------
-    -- relkind = 'S' son secuencias "clásicas". Las columnas IDENTITY de
-    -- PostgreSQL también se respaldan en una secuencia, así que quedan cubiertas.
     FOR v_secuencia IN
         SELECT c.relname
           FROM pg_class c
@@ -73,11 +39,6 @@ BEGIN
         );
     END LOOP;
 
-    -- -----------------------------------------------------------------------
-    -- 3) Dejamos constancia de los privilegios por defecto para lo futuro
-    -- -----------------------------------------------------------------------
-    -- Esto cubre las tablas/secuencias que cree el rol que ejecuta este script.
-    -- Es idempotente y no afecta a los objetos ya existentes.
     EXECUTE format(
         'ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I',
         v_esquema, v_rol
@@ -87,6 +48,44 @@ BEGIN
         v_esquema, v_rol
     );
 
-    RAISE NOTICE 'Privilegios DML de % sobre el esquema % actualizados.', v_rol, v_esquema;
+    IF to_regprocedure(v_esquema || '.cuentas_id_para_login(text)') IS NOT NULL THEN
+        EXECUTE format(
+            'GRANT EXECUTE ON FUNCTION %I.cuentas_id_para_login(text) TO %I',
+            v_esquema, v_rol
+        );
+    END IF;
+    IF to_regprocedure(v_esquema || '.cuentas_media_lecturas_rol(text, timestamptz, timestamptz)') IS NOT NULL THEN
+        EXECUTE format(
+            'GRANT EXECUTE ON FUNCTION %I.cuentas_media_lecturas_rol(text, timestamptz, timestamptz) TO %I',
+            v_esquema, v_rol
+        );
+    END IF;
+    IF to_regprocedure(v_esquema || '.certificado_datos_propietario(uuid)') IS NOT NULL THEN
+        EXECUTE format(
+            'GRANT EXECUTE ON FUNCTION %I.certificado_datos_propietario(uuid) TO %I',
+            v_esquema, v_rol
+        );
+    END IF;
+
+    IF to_regprocedure(v_esquema || '.certificado_estado_publico(uuid, text)') IS NOT NULL THEN
+        EXECUTE format(
+            'GRANT EXECUTE ON FUNCTION %I.certificado_estado_publico(uuid, text) TO %I',
+            v_esquema, v_rol
+        );
+    END IF;
+
+    -- Persona 4: la bitácora es de solo inserción y los certificados nunca se borran.
+    -- El GRANT general de arriba les dio UPDATE/DELETE: se quitan de nuevo (y TRUNCATE).
+    IF to_regclass(v_esquema || '.bitacora_evento') IS NOT NULL THEN
+        EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE ON TABLE %I.bitacora_evento FROM %I', v_esquema, v_rol);
+    END IF;
+    IF to_regclass(v_esquema || '.bitacora_sellobitacora') IS NOT NULL THEN
+        EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE ON TABLE %I.bitacora_sellobitacora FROM %I', v_esquema, v_rol);
+    END IF;
+    IF to_regclass(v_esquema || '.certificados_certificado') IS NOT NULL THEN
+        EXECUTE format('REVOKE DELETE, TRUNCATE ON TABLE %I.certificados_certificado FROM %I', v_esquema, v_rol);
+    END IF;
+
+    RAISE NOTICE 'Privilegios DML y de funciones de % sobre el esquema % actualizados.', v_rol, v_esquema;
 END
 $$;
