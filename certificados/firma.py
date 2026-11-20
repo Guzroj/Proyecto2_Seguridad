@@ -7,10 +7,11 @@ Claves de firma de certificados (lado Django).
                               local, desde .env (ignorado por git). Nunca se escribe en el
                               código, en la base, en la bitácora ni en los registros.
   CERTIFICADO_CLAVES_CONFIABLES
-                              No secreto. Huellas SHA-256 (hex, separadas por coma) de las
-                              claves públicas que Verdeazul reconoce como suyas: la actual y
-                              las anteriores (para verificar certificados viejos tras rotar).
-                              Si está vacía, solo se reconoce la clave actual.
+                              No secreto. Huellas SHA-256 (hex, separadas por coma, punto y
+                              coma o espacios) de las claves públicas que Verdeazul reconoce
+                              como suyas: la actual y las anteriores (para verificar
+                              certificados y sellos viejos tras rotar). Si está vacía, solo se
+                              reconoce la clave actual.
 
 Generar una clave nueva: `python manage.py generar_clave_certificados` (imprime la privada
 para cargarla en Secret Manager y la huella para publicarla).
@@ -20,6 +21,7 @@ Fallo cerrado: sin clave válida no se emite; la emisión lanza y la aprobación
 
 import base64
 import binascii
+import re
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
@@ -60,8 +62,10 @@ def huellas_confiables() -> set[str]:
     """Huellas reconocidas como de Verdeazul; nunca se toman del documento ni de la base."""
     configuradas = getattr(settings, "CERTIFICADO_CLAVES_CONFIABLES", "") or ""
     if isinstance(configuradas, str):
-        configuradas = configuradas.split(",")
-    huellas = {h.strip().lower().replace(" ", "") for h in configuradas if h and h.strip()}
+        # Se aceptan comas, punto y coma y espacios: Cloud Run/gcloud separa los
+        # pares KEY=VALUE por comas, así que en el despliegue se publican con espacios.
+        configuradas = re.split(r"[,;\s]+", configuradas)
+    huellas = {h.strip().lower() for h in configuradas if h and h.strip()}
     if not huellas:
         try:
             huellas = {huella_actual()}
