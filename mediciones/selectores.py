@@ -1,6 +1,6 @@
 """
 Funciones de atributos (solo lectura) que usan los servicios y el motor de
-autorización de Persona 3. Son las funciones de la notación de la matriz:
+autorización (autorizacion/pep.py). Son las funciones de la notación de la matriz:
 
   actores(m)            usuarios que crearon, enviaron, aprobaron, devolvieron, ... m
   actores_cadena(m)     actores de la original y de todas sus versiones enmendadas

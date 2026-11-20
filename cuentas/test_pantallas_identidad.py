@@ -1,5 +1,5 @@
 """
-Paso 18c · Pantallas de dispositivos de campo (O7c, C18), restablecimiento del
+Pantallas de dispositivos de campo (O7c, C18), restablecimiento del
 segundo factor (O7d, C17), alertas (O9, C22) y cierre de la baja de un técnico
 (C16), de punta a punta con login, motor real y servicios. Incluye V14.
 """

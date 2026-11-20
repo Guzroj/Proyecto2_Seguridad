@@ -1,10 +1,10 @@
 """
-Operaciones del flujo de negocio (Persona 2). ÚNICA vía para modificar períodos,
+Operaciones del flujo de negocio. ÚNICA vía para modificar períodos,
 asignaciones, mediciones y enmiendas: ninguna vista debe hacer .save() directo.
 
 Cada operación sigue el mismo orden:
   1. Relee y bloquea el objeto de la BD (SELECT ... FOR UPDATE).
-  2. ganchos.autorizar(...)  -> Persona 3 decide rol, alcance, MFA y HBAC.
+  2. ganchos.autorizar(...)  -> el motor de autorización decide rol, alcance, MFA y HBAC.
   3. Verifica invariantes de dominio (estado, H4, separación de funciones). Estas se
      aplican siempre, aunque el motor de autorización tuviera un error (defensa en
      profundidad; la BD además las revalida con restricciones y disparadores).
@@ -374,7 +374,7 @@ def aprobar_medicion(usuario, medicion) -> Medicion:
         enmienda.estado = EstadoEnmienda.APLICADA
         enmienda.save()
     _evento(usuario, Accion.MEDICION_APROBAR, m, antes=antes, despues=_foto_medicion(m))
-    # Persona 4: emisión del certificado en ESTA transacción (si falla, todo se revierte).
+    # Emisión del certificado en ESTA transacción (si falla, todo se revierte).
     ganchos.on_medicion_aprobada(m)
     return m
 

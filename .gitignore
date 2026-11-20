@@ -16,3 +16,14 @@ __pycache__/
 # Django
 staticfiles/
 db.sqlite3
+
+# LaTeX: archivos que genera la compilación (se regeneran solos)
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz

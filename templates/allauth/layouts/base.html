@@ -51,7 +51,7 @@
                         {% if "GC" in menu_roles or "AE" in menu_roles %}
                             <li><a href="{% url 'gestion_alertas' %}">Alertas</a></li>
                         {% endif %}
-                        {% comment %} Persona 4: O6 (GC, AE, PF por C4), O8 (GC, AE) y X (AE). El servidor decide igual. {% endcomment %}
+                        {% comment %} O6 (GC, AE, PF por C4), O8 (GC, AE) y X (AE). El servidor decide igual. {% endcomment %}
                         {% if "GC" in menu_roles or "AE" in menu_roles or "PF" in menu_roles %}
                             <li><a href="{% url 'certificados_certificados' %}">Certificados</a></li>
                         {% endif %}

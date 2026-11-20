@@ -1,5 +1,5 @@
 """
-Paso 10 · Dispositivos de campo (O7c): AC registra (C18) y revoca (RV).
+Dispositivos de campo (O7c): AC registra (C18) y revoca (RV).
 Con ellos, la baja de un técnico con dispositivos activos lo deja EN_BAJA.
 """
 

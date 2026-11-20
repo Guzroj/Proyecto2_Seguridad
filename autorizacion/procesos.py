@@ -3,7 +3,7 @@ Vías de proceso: lecturas que un proceso del sistema necesita y que el sujeto d
 la petición no puede hacer por sí mismo según la matriz.
 
 datos_propietario_para_certificado(medicion)
-    Persona 4: la emisión del certificado corre dentro de la aprobación del VF
+    La emisión del certificado corre dentro de la aprobación del VF
     (ganchos.on_medicion_aprobada) y necesita el nombre y la identificación del
     propietario, que son O1b y el VF no tiene. Devuelve solo esos dos campos, y
     solo si la medición está APROBADA y el sujeto de la conexión es su

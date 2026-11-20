@@ -1,5 +1,5 @@
 """
-Paso 13 · PEP y cliente del motor (lado Django).
+PEP y cliente del motor (lado Django).
 
 Un transporte HTTP falso entrega cada petición al motor real (reglas.decidir),
 así se prueba el mismo camino que en producción sin levantar el servicio.

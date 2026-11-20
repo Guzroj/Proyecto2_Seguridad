@@ -1,5 +1,5 @@
 """
-Paso 4 · Row Level Security de las tablas de cuentas.
+Row Level Security de las tablas de cuentas.
 
 La base local corre como superusuario, que se salta RLS. Estas pruebas crean,
 dentro de la transacción de cada prueba (se revierte al final), un rol sin

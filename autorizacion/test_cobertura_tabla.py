@@ -1,5 +1,5 @@
 """
-Paso 19 · La tabla de cobertura (docs/cobertura-matriz.md) está al día con la
+La tabla de cobertura (docs/cobertura-matriz.md) está al día con la
 matriz y todo lo que cita existe: cada función de "Dónde se aplica" y cada prueba.
 """
 

@@ -1,5 +1,5 @@
 """
-Paso 17b · RLS de mediciones (O4), actores, enmiendas (O5) y motivos de devolución,
+RLS de mediciones (O4), actores, enmiendas (O5) y motivos de devolución,
 y la vía de proceso de la emisión del certificado.
 
 Lecturas internas (funciones SECURITY DEFINER): en Neon el dueño de las funciones
@@ -7,7 +7,7 @@ no es superusuario, así que RLS también aplica dentro de ellas. app_fase_inter
 marca esas lecturas ('ve_finca', 'certificado'), y las políticas de lectura
 normales devuelven false con un CASE dentro de ellas: así una política nunca vuelve
 a llamar a app_ve_finca desde app_ve_finca (sin depender del orden en que
-PostgreSQL evalúe las políticas). Se ajustan también las del paso 17a.
+PostgreSQL evalúe las políticas). Se ajustan también las de la migración 0022.
 
   mediciones_medicion: lee quien ve la finca de su parcela. Crea TC a su nombre, o
       GC la versión de una enmienda (autor = solicitante, nunca él). Cambia el autor
@@ -20,7 +20,7 @@ PostgreSQL evalúe las políticas). Se ajustan también las del paso 17a.
   mediciones_motivodevolucion: catálogo cerrado; lo leen los autenticados.
 Nadie borra.
 
-Certificado (Persona 4): la emisión corre dentro de la aprobación del VF, que no
+Certificado: la emisión corre dentro de la aprobación del VF, que no
 tiene O1b. certificado_datos_propietario(m) devuelve solo nombre e identificación
 del propietario, y solo si m está APROBADA y el sujeto de la conexión es su
 verificador. Se usa desde autorizacion.procesos.
@@ -38,7 +38,7 @@ def guardia(expresion: str) -> str:
 
 VE_MEDICION = "EXISTS (SELECT 1 FROM mediciones_medicion m WHERE m.id = {col})"
 
-# Políticas del paso 17a que se ajustan: (tabla, política, USING nuevo).
+# Políticas de la migración 0022 que se ajustan: (tabla, política, USING nuevo).
 AJUSTES_17A = [
     ("catalogo_finca", "finca_lectura", guardia("app_ve_finca(id)")),
     ("catalogo_finca", "finca_cambio", guardia("app_ve_finca(id)")),

@@ -1,5 +1,5 @@
 """
-Paso 16 · Listas filtradas: cada sujeto ve en una lista exactamente lo que el
+Listas filtradas: cada sujeto ve en una lista exactamente lo que el
 motor le deja leer objeto por objeto (p. ej., PF solo lo suyo).
 """
 
@@ -52,7 +52,7 @@ class ListasBase(EscenarioBase):
         self.medicion2 = mediciones.crear_medicion(self.tc2, self.parcela2, self.periodo, **DATOS)
         for pf in (self.pf, self.pf2):
             catalogo.registrar_datos_propietario(self.ac, pf, nombre_completo=f"Nombre {pf.pk}", identificacion=f"1-{pf.pk}")
-        # O6 y O8 (Persona 4): el escenario usa ganchos de prueba, así que el certificado de la
+        # O6 y O8: el escenario usa ganchos de prueba, así que el certificado de la
         # medición aprobada y un evento de bitácora se crean con los servicios reales.
         self.certificado = emitir(self.medicion)
         registrar_evento(actor=self.gc, accion=Accion.PERIODO_ABRIR, recurso_tipo="periodo",

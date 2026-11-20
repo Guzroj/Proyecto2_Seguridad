@@ -1,4 +1,4 @@
-"""Paso 4 · Contraseñas Argon2id y login con django-allauth."""
+"""Contraseñas Argon2id y login con django-allauth."""
 
 import re
 

@@ -102,10 +102,10 @@ DONDE = {
     "dispositivo:listar": [LISTAS, P + "dispositivos"],
     "factor:listar": [LISTAS, P + "restablecimientos"],
     "alerta:listar": [LISTAS, P + "alertas"],
-    # O6 · Certificados (Persona 4): lectura y lista; la emisión no es de nadie (SYS-EMI)
+    # O6 · Certificados: lectura y lista; la emisión no es de nadie (SYS-EMI)
     "certificado:leer": [PCE + "certificado", PCE + "certificado_descargar"],
     "certificado:listar": [LISTAS, PCE + "certificados"],
-    # O8 · Bitácora (Persona 4): solo lectura
+    # O8 · Bitácora: solo lectura
     "bitacora:leer": [PB + "evento"],
     "bitacora:listar": [LISTAS, PB + "eventos", PB + "verificar"],
 }
