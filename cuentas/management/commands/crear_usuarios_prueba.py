@@ -68,7 +68,9 @@ class Command(BaseCommand):
         parser.add_argument("--prefijo", default="prueba", help="Prefijo de los usuarios (por defecto: prueba).")
 
     def handle(self, *args, prefijo, **opciones):
-        clave = os.environ.get("VZ_PRUEBA_CLAVE", "")
+        # Secret Manager entrega el valor tal cual se cargó; el `print` con que se generó suele
+        # dejar un salto de línea. Se recorta para que la contraseña sea la que se comparte.
+        clave = (os.environ.get("VZ_PRUEBA_CLAVE", "") or "").strip()
         if not clave:
             raise CommandError("Defina VZ_PRUEBA_CLAVE en el entorno.")
         secreto = validar_secreto_totp(os.environ.get("VZ_PRUEBA_TOTP", ""))
@@ -77,7 +79,7 @@ class Command(BaseCommand):
         except ValidationError as exc:
             raise CommandError(" ".join(exc.messages))
 
-        creados, existentes, codigos = [], [], {}
+        creados, existentes, codigos, ejemplo = [], [], {}, None
         rls.fijar_contexto(fase="sistema")
         try:
             with transaction.atomic():
@@ -95,6 +97,10 @@ class Command(BaseCommand):
                     if rol not in SIN_SEGUNDO_FACTOR:
                         TOTP.activate(u, secreto)
                         codigos[username] = RecoveryCodes.activate(u).get_unused_codes()
+                        if ejemplo is None:
+                            # Se conserva el objeto: después de limpiar el contexto RLS ya no se
+                            # puede volver a consultar la cuenta (la política la oculta).
+                            ejemplo = u
                     creados.append((username, rol))
         finally:
             rls.limpiar_contexto()
@@ -104,7 +110,6 @@ class Command(BaseCommand):
         for username in existentes:
             self.stdout.write(self.style.WARNING(f"{username:<16} ya existía: no se modificó"))
         if codigos:
-            ejemplo = Usuario.objects.get(username=next(iter(codigos)))
             self.stdout.write("\nURI para la app de autenticación (misma para todas):")
             self.stdout.write(get_mfa_adapter().build_totp_url(ejemplo, secreto))
             self.stdout.write("\nCódigos de recuperación (se muestran solo ahora):")

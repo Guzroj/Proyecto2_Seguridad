@@ -204,7 +204,7 @@ jobs:
           # Se traduce a --set-env-vars.
           env_vars: |
             AUTORIZADOR_URL=${{ steps.deploy_autorizador.outputs.url }}
-            CERTIFICADO_CLAVES_CONFIABLES=14428e8d992fa57dfb65003add2e7332a1c2372b5bd584b7b942fec7dba907c2
+            CERTIFICADO_CLAVES_CONFIABLES=827200b60587be8614cb64bb94e4424b5d012865d83e5b787d995b244d2f5db8,14428e8d992fa57dfb65003add2e7332a1c2372b5bd584b7b942fec7dba907c2
           # Se traduce a --set-secrets=CLAVE=secreto:latest.
           # DATABASE_URL usa el rol NO dueño (runtime de la app).
           secrets: |
