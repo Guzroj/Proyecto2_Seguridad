@@ -5,12 +5,25 @@ CE-1115 Seguridad de la Información · Proyecto Parte 2 · Grupo 05
 Implementación del diseño de la Parte 1 (matriz de control de acceso, HBAC, separación de
 responsabilidades) en Django + PostgreSQL, desplegado en Google Cloud Run con base en Neon.
 
+**Sistema en producción:** <https://verdeazul-be4c7peb4a-ue.a.run.app> (solo HTTPS).
+
+### Entregables y dónde se encuentran
+
+| Entregable (enunciado §5) | Ubicación |
+|---|---|
+| Sistema desplegado: URL pública en Cloud Run | §1.1 *Despliegue actual y versiones publicadas* |
+| Credenciales de prueba para cada rol | Se entregan al profesor por un canal privado; no se publican en el repositorio (§1.1) |
+| Código | Este repositorio; estructura en §2 |
+| `Dockerfile` de cada componente | `Dockerfile` (imagen `app`) y `Dockerfile.autorizador` (imagen `autorizador`) |
+| Dependabot activo | `.github/dependabot.yml`; política en §1.2 *Dependabot* |
+| Instrucciones de despliegue | §1.2 *Producción (Cloud Run + Neon)*, incluidos *Pipeline* y *Prerrequisitos* |
+| Etiquetas de versión publicadas | §1.1 *Despliegue actual y versiones publicadas* |
+| Informe de implementación | `docs/informe/P2_Informe_Implementacion_Grupo5.pdf` (fuente `.tex` en la misma carpeta) |
+| Tabla de cobertura de la matriz | `docs/cobertura-matriz.md` |
+
 ---
 
 ## 1. Cómo correrlo en local
-
-Guía paso a paso (primera vez, cuentas de prueba, recorrido en el navegador, pruebas y cómo
-probar certificados y bitácora): [`docs/como-correr.md`](docs/como-correr.md).
 
 Requisitos: **Docker Desktop**. No hace falta instalar Python ni Postgres en la máquina
 (en Windows, App Control bloquea la DLL de `psycopg`; dentro de Docker no hay problema).
@@ -42,8 +55,7 @@ Comandos útiles:
 | Cualquier comando de Django | `docker compose exec web python manage.py <comando>` |
 | Consola de Django | `docker compose exec web python manage.py shell` |
 | Consola SQL | `docker compose exec db psql -U verdeazul -d verdeazul` |
-| Correr pruebas | `docker compose exec web python manage.py test` |
-| Pruebas del motor (contenedor aparte) | `docker compose exec autorizador python -m unittest` |
+| Correr todas las pruebas | Ver §6.4 (`manage.py test` sin etiquetas no incluye las de `autorizacion/`) |
 | Ver logs | `docker compose logs -f web` |
 | Verificar la cadena de la bitácora | `docker compose exec web python manage.py verificar_bitacora` |
 | Sellar la cabeza de la bitácora (en producción, cada hora) | `docker compose exec web python manage.py sellar_bitacora` |
@@ -53,7 +65,58 @@ Comandos útiles:
 
 El código se monta en vivo en el contenedor: al guardar un archivo, `runserver` se recarga.
 
-### Producción (Cloud Run + Neon)
+### 1.1 Despliegue actual y versiones publicadas
+
+| Recurso | Valor |
+|---|---|
+| Aplicación pública | <https://verdeazul-be4c7peb4a-ue.a.run.app> (mismo servicio también en `https://verdeazul-444812071990.us-east1.run.app`) |
+| Autorizador | `https://verdeazul-autorizador-444812071990.us-east1.run.app` (privado: solo lo invoca `verdeazul-app` con OIDC) |
+| Proyecto / región | `project-4d85c806-d471-4964-b73` / `us-east1` |
+| Base de datos | Neon PostgreSQL 18, `aws-us-east-1`, base `neondb` |
+| Registro de imágenes | `us-east1-docker.pkg.dev/project-4d85c806-d471-4964-b73/verdeazul/{app,autorizador}` |
+| Verificación pública de certificados | `/certificados/verificar/` y `/certificados/clave-publica/` |
+
+**Credenciales de prueba.** Hay una cuenta por rol (TC, VF, GC, AC, AE y PF), creadas con
+`crear_usuarios_prueba` contra la base de producción con una contraseña y un secreto TOTP
+propios de producción, distintos de los de desarrollo. Se entregan al profesor por un canal
+privado y no se publican en el repositorio.
+
+**Etiquetas publicadas.** Cada ejecución exitosa de *Build, push y deploy* (push a `main`)
+publica las imágenes `app` y `autorizador` con dos etiquetas: la versión semántica `v1.0.0` y
+`sha-<commit>`. Cloud Run despliega por `sha-<commit>`; la versión en ejecución es la de la
+ejecución exitosa más reciente en *Actions*.
+
+| Ejecución | Fecha (UTC) | Commit en `main` | Etiquetas publicadas | Resultado |
+|---|---|---|---|---|
+| #11 | 2026-11-20 17:39 | `41e20ab` (PR #22) | `v1.0.0`, `sha-41e20ab` | Éxito |
+| #10 | 2026-11-20 16:55 | `e10239d` | `v1.0.0`, `sha-e10239d` | Éxito |
+| #9 | 2026-11-20 16:48 | `0e3fc66` | `v1.0.0`, `sha-0e3fc66` | Éxito |
+| #8 | 2026-11-20 16:43 | `6e67b0d` (rotación de la clave de certificados) | `v1.0.0`, `sha-6e67b0d` | Éxito |
+| #7 | 2026-11-20 15:20 | `39ae938` | `v1.0.0`, `sha-39ae938` | Éxito |
+| #6 | 2026-11-20 15:19 | `27af3e7` | `v1.0.0`, `sha-27af3e7` | Éxito |
+| #5 | 2026-11-20 15:04 | `db5c48c` (PR #20) | `v1.0.0`, `sha-db5c48c` | Éxito |
+| #4 | 2026-11-20 03:45 | `b0eefc2` (PR #19) | `v1.0.0`, `sha-b0eefc2` | Éxito |
+| #3 | 2026-11-20 02:31 | `53e5b7f` (PR #18) | `v1.0.0`, `sha-53e5b7f` | Éxito |
+| #2 | 2026-11-20 02:10 | `2c2222c` (PR #15) | — | Falló: no publicó imagen |
+| #1 | 2026-11-13 00:03 | `6ce4cad` (PR #2) | `v1.0.0`, `sha-6ce4cad` | Éxito |
+
+Los despliegues posteriores a esta tabla se consultan en *Actions → Build, push y deploy*: la
+etiqueta `sha-` es siempre el hash corto del commit desplegado.
+
+**Volver a una versión anterior** (ejemplo con `sha-db5c48c`):
+
+```bash
+gcloud run deploy verdeazul --region us-east1 \
+  --image us-east1-docker.pkg.dev/project-4d85c806-d471-4964-b73/verdeazul/app:sha-db5c48c
+```
+
+El autorizador quedó con `roles/run.invoker` solo para `verdeazul-app`. El path `/healthz`
+de FastAPI queda sombreado por el frontend de Cloud Run; para probar el motor se usa
+`POST /autorizar`, que devuelve la decisión en JSON (`resultado`, `regla`, `motivo`, `rol`,
+`roles`, `hbac`, `alertas`, `marca_agua`); una solicitud mal formada da 422. Los usuarios con
+un rol los resuelve Django leyendo la base, no el autorizador.
+
+### 1.2 Producción (Cloud Run + Neon)
 
 La misma imagen (`Dockerfile`) corre en Cloud Run con `gunicorn` en `$PORT`. Las variables
 `SECRET_KEY`, `DATABASE_URL` (cadena de Neon con `sslmode=require`), `ALLOWED_HOSTS`
@@ -66,10 +129,12 @@ Las migraciones se corren contra Neon con `python manage.py migrate`.
 Dos servicios independientes en la región **`us-east1`**, cada uno con su propia
 imagen en Artifact Registry (repo Docker `verdeazul`):
 
-| Servicio Cloud Run | Imagen | Expuesto | Función |
-|---|---|---|---|
-| `verdeazul` | `app` | Público (`*.run.app`) | Django + gunicorn: UI, sesiones, CSRF. |
-| `verdeazul-autorizador` | `autorizador` | Privado (sin `allUsers`) | Motor de autorización, invocado servicio-a-servicio. |
+| Servicio Cloud Run | Imagen | Dockerfile | Expuesto | Función |
+|---|---|---|---|---|
+| `verdeazul` | `app` | `Dockerfile` | Público (`*.run.app`) | Django + gunicorn: UI, sesiones, CSRF. |
+| `verdeazul-autorizador` | `autorizador` | `Dockerfile.autorizador` | Privado (sin `allUsers`) | Motor de autorización, invocado servicio a servicio. |
+
+Ambas imágenes ejecutan el proceso con un usuario sin privilegios (no `root`).
 
 `verdeazul` llama a `verdeazul-autorizador` con su *service account* y el token de identidad
 de Cloud Run (audiencia = URL del autorizador), así que el autorizador solo acepta tráfico
@@ -80,7 +145,9 @@ autenticado. La URL privada llega a Django en la variable `AUTORIZADOR_URL`.
 `.github/workflows/deploy.yml` se autentica con **Workload Identity Federation** (WIF, sin
 claves JSON de service account de larga vida). En cada push a `main`:
 
-1. Construye las dos imágenes con **tags explícitos**: `v1.0.0` y `sha-<hash corto>`.
+1. Construye las dos imágenes con **dos etiquetas explícitas**: la versión semántica
+   (`v1.0.0` por defecto, configurable con la variable `IMAGE_VERSION`; si el push es de una
+   etiqueta git `vX.Y.Z`, esa etiqueta) y `sha-<hash corto del commit>`.
 2. Hace push a Artifact Registry:
    `us-east1-docker.pkg.dev/<proyecto>/verdeazul/app` y `.../verdeazul/autorizador`.
 3. Despliega ambos servicios en Cloud Run por etiqueta de imagen inmutable.
@@ -91,8 +158,10 @@ claves JSON de service account de larga vida). En cada push a `main`:
    runtime, fase `sistema`) y su disparador de Cloud Scheduler (`5 0 * * *`,
    `America/Costa_Rica`).
 
-Nunca se publica solo `latest`: cada despliegue queda atado a una etiqueta de versión y a un
-commit, lo que permite volver a una imagen anterior sin ambigüedad.
+Nunca se publica `latest`. Cloud Run despliega siempre por la etiqueta `sha-<commit>`, que es
+inmutable e identifica el estado exacto del código; la etiqueta semántica se reasigna mientras
+no se cambie `IMAGE_VERSION` o se publique una etiqueta git nueva. Así se responde qué versión
+está corriendo y a cuál se vuelve (§1.1).
 
 #### Secretos y variables (Secret Manager)
 
@@ -166,21 +235,6 @@ PRs automáticos, reduciendo la ventana de exposición a vulnerabilidades conoci
 - Las alertas se revisan en *Security → Dependabot alerts* y se atienden actualizando la
   dependencia afectada (o documentando el riesgo aceptado).
 
-#### Despliegue de validación actual
-
-| Recurso | Valor |
-|---|---|
-| App pública | `https://verdeazul-444812071990.us-east1.run.app` |
-| Autorizador privado | `https://verdeazul-autorizador-444812071990.us-east1.run.app` |
-| Proyecto / región | `project-4d85c806-d471-4964-b73` / `us-east1` |
-| Imagen desplegada | `manual-202611121557` (validación manual) |
-
-El autorizador quedó con `roles/run.invoker` solo para `verdeazul-app`. El path `/healthz`
-de FastAPI queda sombreado por el frontend de Cloud Run; para probar el motor usar
-`POST /autorizar`, que devuelve la decisión en JSON (`resultado`, `regla`, `motivo`, `rol`,
-`roles`, `hbac`, `alertas`, `marca_agua`); una solicitud mal formada da 422. Los usuarios con
-un rol los resuelve Django leyendo la base, no el autorizador.
-
 #### Prerrequisitos (setup manual, una sola vez)
 
 1. **Neon**: crear el proyecto (PostgreSQL 18, región `aws-us-east-1`) y la base `neondb`;
@@ -230,7 +284,9 @@ mediciones/       O2–O5: Periodo, Asignacion, Medicion + MedicionActor, Enmien
   pantallas.py    /gestion/periodos, asignaciones, mediciones, enmiendas
 templates/        plantilla base y menú según los roles vigentes
 db/               SQL de roles y privilegios para Neon (app_runtime, RLS)
-docs/             tabla de cobertura de la matriz (generada con manage.py tabla_cobertura)
+docs/
+  cobertura-matriz.md          tabla de cobertura de las 78 celdas (manage.py tabla_cobertura)
+  informe/                     informe de implementación (PDF y fuente LaTeX) con su evidencia
 ```
 
 Migraciones con SQL propio: `cuentas` (RLS de todas las tablas), `catalogo/0003` y
@@ -411,9 +467,7 @@ Otros comandos:
 # Tarea diaria (activa y da de baja las cuentas AE según su ventana)
 docker compose exec web python manage.py tarea_diaria_cuentas
 
-# Pruebas: Django y el motor en su propio contenedor (sin Django ni base)
-docker compose exec web python manage.py test
-docker compose exec autorizador python -m unittest
+# Pruebas: ver §6.4 (incluye las de autorizacion/, que manage.py test no descubre solo)
 
 # Regenerar la tabla de cobertura (una prueba falla si no está al día)
 docker compose exec web python manage.py tabla_cobertura
@@ -438,7 +492,7 @@ público: AC crea la cuenta y entrega un enlace de activación de un solo uso po
 
 ### 5.3 Uso desde otros módulos
 
-Esto actualiza lo que dice 3.2 sobre el comportamiento actual de los ganchos:
+Cómo usan el motor los demás módulos (complementa §3.2):
 
 | Pieza | Uso |
 |---|---|
@@ -510,7 +564,7 @@ describe el estado final: **25 tablas con RLS y FORCE**, **5 metadatos de Django
 | D17 | Una sola ventana de auditoría por cuenta AE; al vencer, la tarea diaria deja la cuenta INACTIVA, termina su rol AE y cierra sus sesiones. | Una cuenta AE nominal por auditoría; un AE nunca tiene registros de campo pendientes, así que no pasa por EN_BAJA. |
 | D18 | RLS: cada `WITH CHECK` repite su condición completa (migración 0019), y las lecturas dentro de funciones `SECURITY DEFINER` usan una fase interna para que una política no se llame a sí misma (0023). | PostgreSQL combina las políticas permisivas de UPDATE (el `USING` de una con el `WITH CHECK` de otra), lo que permitía, por ejemplo, reactivar una cuenta EN_BAJA; y sin la fase interna la recursión dependía del orden de evaluación. |
 
-## 6. Certificados, bitácora y exportaciones (Persona 4)
+## 6. Certificados, bitácora y exportaciones
 
 ### 6.1 Qué hay
 
@@ -530,18 +584,23 @@ describe el estado final: **25 tablas con RLS y FORCE**, **5 metadatos de Django
 3. Producción: crear el secreto `verdeazul-certificado-clave` en Secret Manager con la privada y dar
    `roles/secretmanager.secretAccessor` sobre él a `verdeazul-app`. `deploy.yml` lo monta como variable
    de entorno. **Sin ese secreto el despliegue falla**, y sin clave la aprobación se revierte (fallo cerrado).
-4. Publicar la huella (aquí y en `/certificados/clave-publica/`). Al rotar, poner las huellas viejas y la
-   nueva en `CERTIFICADO_CLAVES_CONFIABLES` (separadas por coma) para que los certificados viejos sigan verificando.
+4. Publicar la huella (aquí y en `/certificados/clave-publica/`). Al rotar, poner la nueva y las
+   anteriores en `CERTIFICADO_CLAVES_CONFIABLES` (separadas por espacios, comas o punto y coma; en
+   `deploy.yml` van separadas por espacios porque `gcloud` usa la coma para separar variables), así los
+   certificados y sellos emitidos antes de la rotación siguen verificando.
 
-**Huella publicada de la clave de producción** (SHA-256 de la clave pública Ed25519, fijada en
-`CERTIFICADO_CLAVES_CONFIABLES` en `deploy.yml`):
+**Huellas publicadas de las claves de producción** (SHA-256 de la clave pública Ed25519, fijadas
+en `CERTIFICADO_CLAVES_CONFIABLES` en `deploy.yml` y servidas por HTTPS en `/certificados/clave-publica/`):
 
-```
-14428e8d992fa57dfb65003add2e7332a1c2372b5bd584b7b942fec7dba907c2
-```
+| Clave | Huella | Uso |
+|---|---|---|
+| **Actual** (desde la rotación del 20-nov-2026, despliegue #8) | `827200b60587be8614cb64bb94e4424b5d012865d83e5b787d995b244d2f5db8` | Firma los certificados y sellos nuevos |
+| Anterior | `14428e8d992fa57dfb65003add2e7332a1c2372b5bd584b7b942fec7dba907c2` | Ya no firma; sigue siendo confiable para verificar lo emitido antes de la rotación |
 
 Verificar un certificado de producción sin el sitio:
-`python certificados/formato.py certificado.json --huella 14428e8d992fa57dfb65003add2e7332a1c2372b5bd584b7b942fec7dba907c2`.
+`python certificados/formato.py certificado.json --huella 827200b60587be8614cb64bb94e4424b5d012865d83e5b787d995b244d2f5db8`
+(para uno emitido antes de la rotación, agregar `--huella 14428e8d992fa57dfb65003add2e7332a1c2372b5bd584b7b942fec7dba907c2`;
+la opción se puede repetir).
 
 Las pruebas no necesitan la clave: `verdeazul/pruebas.py` usa una efímera si no hay una configurada.
 
