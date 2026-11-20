@@ -1,0 +1,11 @@
+# Generado: 2026-11-20T05:02:22Z en Docker Compose local, develop 9fc527a
+$ python certificados/formato.py certificado.json --huella 14428e8d992fa57dfb65003add2e7332a1c2372b5bd584b7b942fec7dba907c2
+VÁLIDO: la firma es correcta y la clave es de Verdeazul.
+  Certificado bd0faee9-2da8-4626-be0c-9c000caa9727 · 38.2737 t CO2
+  Huella de la clave del documento: 1442 8e8d 992f a57d fb65 003a dd2e 7332 a1c2 372b 5bd5 84b7 b942 fec7 dba9 07c2
+(salida: 0)
+$ python certificados/formato.py certificado_alterado.json --huella 14428e8d992fa57dfb65003add2e7332a1c2372b5bd584b7b942fec7dba907c2
+NO VÁLIDO
+  - La firma NO corresponde al contenido: el certificado fue alterado o no lo firmó esa clave.
+  Huella de la clave del documento: 1442 8e8d 992f a57d fb65 003a dd2e 7332 a1c2 372b 5bd5 84b7 b942 fec7 dba9 07c2
+(salida: 1)

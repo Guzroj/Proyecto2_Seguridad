@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.28 (MiKTeX 25.12) (preloaded format=pdflatex 2026.9.6)  19 NOV 2026 13:52
+This is pdfTeX, Version 3.141592653-2.6-1.40.28 (MiKTeX 25.12) (preloaded format=pdflatex 2026.9.6)  19 NOV 2026 23:07
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -342,30 +342,6 @@ Package: fancyvrb 2026/10/20 4.8 verbatim text (tvz,hv)
 \FV@StepNumber=\count311
 \FV@OutFile=\write3
 )
-(C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/pgf/frontendlayer\tikz.
-sty
-(C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/pgf/basiclayer\pgf.sty
-(C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/pgf/utilities\pgfrcs.st
-y
-(C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/generic/pgf/utilities\pgfutil
--common.tex
-\pgfutil@everybye=\toks33
-\pgfutil@tempdima=\dimen194
-\pgfutil@tempdimb=\dimen195
-)
-(C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/generic/pgf/utilities\pgfutil
--latex.def
-\pgfutil@abb=\box66
-)
-(C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/generic/pgf/utilities\pgfrcs.
-code.tex
-(C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/generic/pgf\pgf.revision.tex)
-Package: pgfrcs 2025-08-29 v3.1.11a (3.1.11a)
-))
-Package: pgf 2025-08-29 v3.1.11a (3.1.11a)
-
-(C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/pgf/basiclayer\pgfcore.
-sty
 (C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/graphics\graphicx.sty
 Package: graphicx 2024/12/31 v1.2e Enhanced LaTeX Graphics (DPC,SPQR)
 
@@ -381,9 +357,33 @@ File: graphics.cfg 2016/06/04 v1.11 sample graphics configuration
 )
 Package graphics Info: Driver file: pdftex.def on input line 106.
 )
-\Gin@req@height=\dimen196
-\Gin@req@width=\dimen197
+\Gin@req@height=\dimen194
+\Gin@req@width=\dimen195
 )
+(C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/pgf/frontendlayer\tikz.
+sty
+(C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/pgf/basiclayer\pgf.sty
+(C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/pgf/utilities\pgfrcs.st
+y
+(C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/generic/pgf/utilities\pgfutil
+-common.tex
+\pgfutil@everybye=\toks33
+\pgfutil@tempdima=\dimen196
+\pgfutil@tempdimb=\dimen197
+)
+(C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/generic/pgf/utilities\pgfutil
+-latex.def
+\pgfutil@abb=\box66
+)
+(C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/generic/pgf/utilities\pgfrcs.
+code.tex
+(C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/generic/pgf\pgf.revision.tex)
+Package: pgfrcs 2025-08-29 v3.1.11a (3.1.11a)
+))
+Package: pgf 2025-08-29 v3.1.11a (3.1.11a)
+
+(C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/pgf/basiclayer\pgfcore.
+sty
 (C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/pgf/systemlayer\pgfsys.
 sty
 (C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/generic/pgf/systemlayer\pgfsy
@@ -814,7 +814,7 @@ Package uniquecounter Info: New unique counter `rerunfilecheck' on input line 2
 )
 \Hy@SectionHShift=\skip76
 )
-LaTeX Font Info:    Trying to load font information for T1+lmr on input line 69
+LaTeX Font Info:    Trying to load font information for T1+lmr on input line 72
 .
 
 (C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/lm\t1lmr.fd
@@ -832,26 +832,26 @@ Package babel Info: 'spanish' activates 'spanish' shorthands.
 )
 \openout1 = `P2_Informe_Implementacion_Grupo5.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 69.
-LaTeX Font Info:    ... okay on input line 69.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 69.
-LaTeX Font Info:    ... okay on input line 69.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 69.
-LaTeX Font Info:    ... okay on input line 69.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 69.
-LaTeX Font Info:    ... okay on input line 69.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 69.
-LaTeX Font Info:    ... okay on input line 69.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 69.
-LaTeX Font Info:    ... okay on input line 69.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 69.
-LaTeX Font Info:    ... okay on input line 69.
-LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 69.
-LaTeX Font Info:    ... okay on input line 69.
-LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 69.
-LaTeX Font Info:    ... okay on input line 69.
-LaTeX Info: Redefining \. on input line 69.
-LaTeX Info: Redefining \% on input line 69.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 72.
+LaTeX Font Info:    ... okay on input line 72.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 72.
+LaTeX Font Info:    ... okay on input line 72.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 72.
+LaTeX Font Info:    ... okay on input line 72.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 72.
+LaTeX Font Info:    ... okay on input line 72.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 72.
+LaTeX Font Info:    ... okay on input line 72.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 72.
+LaTeX Font Info:    ... okay on input line 72.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 72.
+LaTeX Font Info:    ... okay on input line 72.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 72.
+LaTeX Font Info:    ... okay on input line 72.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 72.
+LaTeX Font Info:    ... okay on input line 72.
+LaTeX Info: Redefining \. on input line 72.
+LaTeX Info: Redefining \% on input line 72.
 
 *geometry* driver: auto-detecting
 *geometry* detected driver: pdftex
@@ -887,13 +887,13 @@ LaTeX Info: Redefining \% on input line 69.
 * \@reversemarginfalse
 * (1in=72.27pt=25.4mm, 1cm=28.453pt)
 
-LaTeX Info: Redefining \microtypecontext on input line 69.
-Package microtype Info: Applying patch `item' on input line 69.
-Package microtype Info: Applying patch `toc' on input line 69.
-Package microtype Info: Applying patch `eqnum' on input line 69.
-Package microtype Info: Applying patch `footnote' on input line 69.
-Package microtype Info: Applying patch `verbatim' on input line 69.
-LaTeX Info: Redefining \microtypesetup on input line 69.
+LaTeX Info: Redefining \microtypecontext on input line 72.
+Package microtype Info: Applying patch `item' on input line 72.
+Package microtype Info: Applying patch `toc' on input line 72.
+Package microtype Info: Applying patch `eqnum' on input line 72.
+Package microtype Info: Applying patch `footnote' on input line 72.
+Package microtype Info: Applying patch `verbatim' on input line 72.
+LaTeX Info: Redefining \microtypesetup on input line 72.
 Package microtype Info: Generating PDF output.
 Package microtype Info: Character protrusion enabled (level 2).
 Package microtype Info: Using default protrusion set `alltext'.
@@ -937,54 +937,54 @@ Package caption Info: Begin \AtBeginDocument code.
 Package caption Info: float package is loaded.
 Package caption Info: hyperref package is loaded.
 Package caption Info: End \AtBeginDocument code.
-Package hyperref Info: Link coloring OFF on input line 69.
+Package hyperref Info: Link coloring OFF on input line 72.
  (P2_Informe_Implementacion_Grupo5.out)
 (P2_Informe_Implementacion_Grupo5.out)
 \@outlinefile=\write5
 \openout5 = `P2_Informe_Implementacion_Grupo5.out'.
 
 LaTeX Font Info:    Trying to load font information for TS1+lmr on input line 8
-3.
+6.
 
 (C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/lm\ts1lmr.fd
 File: ts1lmr.fd 2015/05/01 v1.6.1 Font defs for Latin Modern
 )
 LaTeX Font Info:    Trying to load font information for OT1+lmr on input line 9
-5.
+8.
 
 (C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/lm\ot1lmr.fd
 File: ot1lmr.fd 2015/05/01 v1.6.1 Font defs for Latin Modern
 )
 LaTeX Font Info:    Trying to load font information for OML+lmm on input line 9
-5.
+8.
 
 (C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/lm\omllmm.fd
 File: omllmm.fd 2015/05/01 v1.6.1 Font defs for Latin Modern
 )
 LaTeX Font Info:    Trying to load font information for OMS+lmsy on input line 
-95.
+98.
 
 (C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/lm\omslmsy.fd
 File: omslmsy.fd 2015/05/01 v1.6.1 Font defs for Latin Modern
 )
 LaTeX Font Info:    Trying to load font information for OMX+lmex on input line 
-95.
+98.
 
 (C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/lm\omxlmex.fd
 File: omxlmex.fd 2015/05/01 v1.6.1 Font defs for Latin Modern
 )
 LaTeX Font Info:    External font `lmex10' loaded for size
-(Font)              <10> on input line 95.
+(Font)              <10> on input line 98.
 LaTeX Font Info:    External font `lmex10' loaded for size
-(Font)              <7> on input line 95.
+(Font)              <7> on input line 98.
 LaTeX Font Info:    External font `lmex10' loaded for size
-(Font)              <5> on input line 95.
+(Font)              <5> on input line 98.
 LaTeX Font Info:    External font `lmex10' loaded for size
-(Font)              <9> on input line 108.
+(Font)              <9> on input line 111.
 LaTeX Font Info:    External font `lmex10' loaded for size
-(Font)              <6> on input line 108.
+(Font)              <6> on input line 111.
 LaTeX Font Info:    Trying to load font information for T1+lmtt on input line 1
-09.
+12.
 
 (C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/lm\t1lmtt.fd
 File: t1lmtt.fd 2015/05/01 v1.6.1 Font defs for Latin Modern
@@ -999,7 +999,7 @@ Package microtype Info: Loading generic protrusion settings for font family
 s/AppData/Local/Programs/MiKTeX/fonts/enc/dvips/lm/lm-ec.enc}{C:/Users/sebas/Ap
 pData/Local/Programs/MiKTeX/fonts/enc/dvips/lm/lm-ts1.enc}]
 LaTeX Font Info:    Trying to load font information for T1+lmss on input line 1
-65.
+68.
 
 (C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/lm\t1lmss.fd
 File: t1lmss.fd 2015/05/01 v1.6.1 Font defs for Latin Modern
@@ -1009,9 +1009,9 @@ Package microtype Info: Loading generic protrusion settings for font family
 (microtype)             For optimal results, create family-specific settings.
 (microtype)             See the microtype manual for details.
 LaTeX Font Info:    Font shape `T1/lmtt/bx/n' in size <7> not available
-(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 165.
+(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 168.
 LaTeX Font Info:    Trying to load font information for TS1+lmss on input line 
-165.
+168.
 
 (C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/lm\ts1lmss.fd
 File: ts1lmss.fd 2015/05/01 v1.6.1 Font defs for Latin Modern
@@ -1021,16 +1021,16 @@ Package microtype Info: Loading generic protrusion settings for font family
 (microtype)             For optimal results, create family-specific settings.
 (microtype)             See the microtype manual for details.
 LaTeX Font Info:    Font shape `T1/lmss/m/it' in size <5> not available
-(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 165.
+(Font)              Font shape `T1/lmss/m/sl' tried instead on input line 168.
 
-Underfull \hbox (badness 1231) in paragraph at lines 189--190
+Underfull \hbox (badness 1231) in paragraph at lines 192--193
 \T1/lmtt/m/n/10 /gestion/mediciones/<id>/aprobar/ \T1/lmr/m/n/10 (+20) por HTTP
 S con la coo-kie \T1/lmtt/m/n/10 __Host-vz_sesion \T1/lmr/m/n/10 (+20) y el to-
 ken CSRF.
  []
 
 
-Underfull \hbox (badness 2142) in paragraph at lines 189--190
+Underfull \hbox (badness 2142) in paragraph at lines 192--193
 \T1/lmr/m/n/10 (+20) (2) \T1/lmtt/m/n/10 ControlSesionMiddleware \T1/lmr/m/n/10
  (+20) va-li-da la se-sión re-gis-tra-da (inac-ti-vi-dad por rol, má-xi-mo de 1
 0 h) y
@@ -1041,50 +1041,100 @@ pdfTeX warning (ext4): destination with the same identifier (name{page.1}) has
 been already used, duplicate ignored
 <to be read again> 
                    \relax 
-l.190 
+l.193 
        [1{C:/Users/sebas/AppData/Local/Programs/MiKTeX/fonts/enc/dvips/lm/lm-ma
 thsy.enc}]
-Overfull \hbox (1.99959pt too wide) in paragraph at lines 224--225
+<figuras/servicios-recorte.png, id=86, 1520.68124pt x 103.38625pt>
+File: figuras/servicios-recorte.png Graphic file (type png)
+<use figuras/servicios-recorte.png>
+Package pdftex.def Info: figuras/servicios-recorte.png  used on input line 198.
+
+(pdftex.def)             Requested size: 493.99312pt x 33.58435pt.
+
+Overfull \hbox (1.99959pt too wide) in paragraph at lines 234--235
 \T1/lmtt/m/n/8 NegacionesFueraDelRollbackTests$\T1/lmr/m/n/8 (-20) , 
  []
 
-ignored error: Infinite glue shrinkage found in box being split [2] [3{C:/Users
-/sebas/AppData/Local/Programs/MiKTeX/fonts/enc/dvips/lm/lm-mathit.enc}{C:/Users
-/sebas/AppData/Local/Programs/MiKTeX/fonts/enc/dvips/lm/lm-rm.enc}]
+ignored error: Infinite glue shrinkage found in box being split [2 <./figuras/s
+ervicios-recorte.png (PNG copy)>] [3{C:/Users/sebas/AppData/Local/Programs/MiKT
+eX/fonts/enc/dvips/lm/lm-mathit.enc}{C:/Users/sebas/AppData/Local/Programs/MiKT
+eX/fonts/enc/dvips/lm/lm-rm.enc}]
+<figuras/secrets-recorte.png, id=113, 521.95pt x 179.67125pt>
+File: figuras/secrets-recorte.png Graphic file (type png)
+<use figuras/secrets-recorte.png>
+Package pdftex.def Info: figuras/secrets-recorte.png  used on input line 278.
+(pdftex.def)             Requested size: 241.65135pt x 83.18437pt.
+<figuras/referencias-recorte.png, id=114, 547.04375pt x 204.765pt>
+File: figuras/referencias-recorte.png Graphic file (type png)
+<use figuras/referencias-recorte.png>
+Package pdftex.def Info: figuras/referencias-recorte.png  used on input line 27
+9.
+(pdftex.def)             Requested size: 241.65135pt x 90.45305pt.
+<figuras/iam-clave-recorte.png, id=115, 893.3375pt x 158.5925pt>
+File: figuras/iam-clave-recorte.png Graphic file (type png)
+<use figuras/iam-clave-recorte.png>
+Package pdftex.def Info: figuras/iam-clave-recorte.png  used on input line 280.
+
+(pdftex.def)             Requested size: 286.18091pt x 50.80627pt.
+ [4 <./figuras/secrets-recorte.png (PNG copy)> <./figuras/referencias-recorte.p
+ng (PNG copy)> <./figuras/iam-clave-recorte.png (PNG copy)>]
 LaTeX Font Info:    Font shape `T1/lmtt/bx/n' in size <10> not available
-(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 301.
+(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 320.
 Package microtype Info: Character `029' is missing
 (microtype)             in font `T1/lmr/m/sc/10'.
 (microtype)             Ignoring protrusion settings for this character.
- [4]
-Package microtype Info: Character `029' is missing
-(microtype)             in font `T1/lmr/m/sc/8'.
-(microtype)             Ignoring protrusion settings for this character.
+ [5] (cobertura_filas.tex)
+ignored error: Infinite glue shrinkage found in box being split [6]
+ignored error: Infinite glue shrinkage found in box being split [7]
+<figuras/https-recorte.png, id=164, 491.8375pt x 331.2375pt>
+File: figuras/https-recorte.png Graphic file (type png)
+<use figuras/https-recorte.png>
+Package pdftex.def Info: figuras/https-recorte.png  used on input line 383.
+(pdftex.def)             Requested size: 197.11423pt x 132.75041pt.
+<figuras/denegado-recorte.png, id=165, 421.575pt x 90.3375pt>
+File: figuras/denegado-recorte.png Graphic file (type png)
+<use figuras/denegado-recorte.png>
+Package pdftex.def Info: figuras/denegado-recorte.png  used on input line 386.
+(pdftex.def)             Requested size: 174.06076pt x 37.29913pt.
+<figuras/bitacora-denegado.png, id=166, 702.625pt x 180.675pt>
+File: figuras/bitacora-denegado.png Graphic file (type png)
+<use figuras/bitacora-denegado.png>
+Package pdftex.def Info: figuras/bitacora-denegado.png  used on input line 387.
 
-ignored error: Infinite glue shrinkage found in box being split [5]
-(cobertura_filas.tex)
-ignored error: Infinite glue shrinkage found in box being split [6] [7]
-LaTeX Font Info:    Trying to load font information for TS1+lmtt on input line 
-420.
-
-(C:\Users\sebas\AppData\Local\Programs\MiKTeX\tex/latex/lm\ts1lmtt.fd
-File: ts1lmtt.fd 2015/05/01 v1.6.1 Font defs for Latin Modern
-)
-Package microtype Info: Loading generic protrusion settings for font family
-(microtype)             `lmtt' (encoding: TS1).
-(microtype)             For optimal results, create family-specific settings.
-(microtype)             See the microtype manual for details.
-Package microtype Info: Character `texttrademark ' is missing
-(microtype)             in font `TS1/lmtt/m/n/7'.
-(microtype)             Ignoring protrusion settings for this character.
- [8]
-Underfull \hbox (badness 3068) in paragraph at lines 448--449
-[]\T1/lmr/m/n/9 (+20) Google Cloud. (2026). \T1/lmr/m/it/9 (+20) Se-cret Ma-na-
-ger encry-ption\T1/lmr/m/n/9 (+20) . []$\T1/lmtt/m/n/9 https : / / docs . cloud
- . google . com / secret -[] manager / docs /
- []
-
-[9] (P2_Informe_Implementacion_Grupo5.aux
+(pdftex.def)             Requested size: 281.2357pt x 72.31833pt.
+<figuras/certificado-valido-recorte.png, id=167, 642.4pt x 155.58125pt>
+File: figuras/certificado-valido-recorte.png Graphic file (type png)
+<use figuras/certificado-valido-recorte.png>
+Package pdftex.def Info: figuras/certificado-valido-recorte.png  used on input 
+line 397.
+(pdftex.def)             Requested size: 241.65135pt x 58.5256pt.
+<figuras/certificado-alterado-recorte.png, id=168, 1395.2125pt x 346.29375pt>
+File: figuras/certificado-alterado-recorte.png Graphic file (type png)
+<use figuras/certificado-alterado-recorte.png>
+Package pdftex.def Info: figuras/certificado-alterado-recorte.png  used on inpu
+t line 398.
+(pdftex.def)             Requested size: 241.65135pt x 59.97351pt.
+<figuras/dependabot-prs.png, id=170, 590.205pt x 555.07375pt>
+File: figuras/dependabot-prs.png Graphic file (type png)
+<use figuras/dependabot-prs.png>
+Package pdftex.def Info: figuras/dependabot-prs.png  used on input line 409.
+(pdftex.def)             Requested size: 182.27104pt x 171.4189pt.
+<figuras/dependabot-jobs.png, id=171, 562.1pt x 313.17pt>
+File: figuras/dependabot-jobs.png Graphic file (type png)
+<use figuras/dependabot-jobs.png>
+Package pdftex.def Info: figuras/dependabot-jobs.png  used on input line 410.
+(pdftex.def)             Requested size: 162.48264pt x 90.52547pt.
+<figuras/dependabot-alertas.png, id=172, 527.9725pt x 251.94125pt>
+File: figuras/dependabot-alertas.png Graphic file (type png)
+<use figuras/dependabot-alertas.png>
+Package pdftex.def Info: figuras/dependabot-alertas.png  used on input line 411
+.
+(pdftex.def)             Requested size: 132.79626pt x 63.36574pt.
+ [8 <./figuras/https-recorte.png (PNG copy)> <./figuras/denegado-recorte.png (P
+NG copy)> <./figuras/bitacora-denegado.png (PNG copy)>] [9 <./figuras/certifica
+do-valido-recorte.png (PNG copy)> <./figuras/certificado-alterado-recorte.png> 
+<./figuras/dependabot-prs.png (PNG copy)> <./figuras/dependabot-jobs.png> <./fi
+guras/dependabot-alertas.png>] (P2_Informe_Implementacion_Grupo5.aux
 LaTeX Info: Redefining \. on input line 7.
 LaTeX Info: Redefining \% on input line 7.
 )
@@ -1097,13 +1147,13 @@ t changed.
 (rerunfilecheck)             Checksum: 33D578957D3C88155E67B1205E2CF34E;1433.
  ) 
 Here is how much of TeX's memory you used:
- 27493 strings out of 467871
- 514664 string characters out of 5418377
- 1006192 words of memory out of 5000000
- 55554 multiletter control sequences out of 15000+600000
- 732884 words of font info for 232 fonts, out of 8000000 for 9000
+ 27517 strings out of 467871
+ 516950 string characters out of 5418377
+ 1012890 words of memory out of 5000000
+ 55624 multiletter control sequences out of 15000+600000
+ 726826 words of font info for 229 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 102i,12n,107p,1626b,994s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 84i,12n,94p,1626b,994s stack positions out of 10000i,1000n,20000p,200000b,200000s
 <C:/Users/sebas/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/lmbx10.pf
 b><C:/Users/sebas/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/lmbx12.pf
 b><C:/Users/sebas/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/lmbx8.pfb
@@ -1130,10 +1180,10 @@ s/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/lmtk10.pfb><C:/Users/seba
 s/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/lmtt10.pfb><C:/Users/seba
 s/AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/lmtt8.pfb><C:/Users/sebas
 /AppData/Local/Programs/MiKTeX/fonts/type1/public/lm/lmtt9.pfb>
-Output written on P2_Informe_Implementacion_Grupo5.pdf (10 pages, 675808 bytes)
-.
+Output written on P2_Informe_Implementacion_Grupo5.pdf (10 pages, 1517269 bytes
+).
 PDF statistics:
- 377 PDF objects out of 1000 (max. 8388607)
- 83 named destinations out of 1000 (max. 500000)
- 69701 words of extra memory for PDF output out of 74296 (max. 10000000)
+ 335 PDF objects out of 1000 (max. 8388607)
+ 42 named destinations out of 1000 (max. 500000)
+ 65153 words of extra memory for PDF output out of 74296 (max. 10000000)
 
