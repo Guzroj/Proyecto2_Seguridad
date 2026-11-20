@@ -1,5 +1,5 @@
 """
-Paso 17c · RLS de las tablas de Django y allauth: correos, confirmaciones y
+RLS de las tablas de Django y allauth: correos, confirmaciones y
 bitácora del admin por sujeto; metadatos de solo lectura para la app; la sesión
 de Django sin RLS a propósito. Incluye un ingreso completo con el rol de la app.
 """

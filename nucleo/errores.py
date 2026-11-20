@@ -2,10 +2,10 @@
 Excepciones comunes.
 
 Separación de responsabilidades entre capas:
-  - ReglaNegocio y subclases: las lanza la capa de servicios (Persona 2) cuando una
+  - ReglaNegocio y subclases: las lanza la capa de servicios cuando una
     operación viola una invariante del dominio, sin importar el rol de quien la pide
     (p. ej. editar una medición aprobada, aprobar la propia medición).
-  - AccesoDenegado / FueraDeAlcance: las lanza el motor de autorización (Persona 3)
+  - AccesoDenegado / FueraDeAlcance: las lanza el motor de autorización
     cuando el rol, el alcance, el segundo factor o una regla HBAC no permiten la acción.
 
 Sugerencia para las vistas: AccesoDenegado -> 403, FueraDeAlcance -> 404 (RG3),

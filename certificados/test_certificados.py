@@ -1,5 +1,5 @@
 """
-Certificados (O6, Persona 4): emisión firmada dentro de la aprobación, reversión, doble
+Certificados (O6): emisión firmada dentro de la aprobación, reversión, doble
 emisión, P2 (revocar y reemitir o mantener), verificación y manipulación, C4 con el motor
 real, disparadores con SQL directo y RLS con el rol de la aplicación.
 """
@@ -34,20 +34,20 @@ from mediciones.models import Medicion
 from nucleo.acciones import Accion
 from nucleo.errores import AccesoDenegado, FueraDeAlcance, TransicionInvalida
 
-GANCHOS_P4 = {
+GANCHOS_EMISION = {
     "usuarios_con_rol": "cuentas.roles.usuarios_con_rol",
     "registrar_evento": "bitacora.servicios.registrar_evento",
     "on_medicion_aprobada": "certificados.servicios.emitir",
 }
 # Servicios con autorización permisiva (el motor se prueba aparte) y bitácora y emisión REALES.
-P4 = override_settings(AUTORIZACION_PROVISIONAL_PERMISIVA=True, VERDEAZUL_GANCHOS=GANCHOS_P4)
+CON_EMISION_REAL = override_settings(AUTORIZACION_PROVISIONAL_PERMISIVA=True, VERDEAZUL_GANCHOS=GANCHOS_EMISION)
 
 
 def decidir(usuario, accion, recurso=None, contexto=None):
     return reglas.decidir(pep.construir_solicitud(usuario, accion, recurso, contexto))
 
 
-@P4
+@CON_EMISION_REAL
 class EmisionBase(EscenarioBase):
     def setUp(self):
         super().setUp()
@@ -319,7 +319,7 @@ class RLSCertificadosTests(RLSMedicionesBase):
 
     def setUp(self):
         super().setUp()
-        parche = override_settings(VERDEAZUL_GANCHOS={**GANCHOS_MOTOR, **GANCHOS_P4,
+        parche = override_settings(VERDEAZUL_GANCHOS={**GANCHOS_MOTOR, **GANCHOS_EMISION,
                                                       "autorizar": "autorizacion.cliente.autorizar"})
         parche.enable()
         self.addCleanup(parche.disable)

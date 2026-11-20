@@ -1,5 +1,5 @@
 """
-Paso 14b · Endurecimiento de las actualizaciones bajo RLS (migración 0019).
+Endurecimiento de las actualizaciones bajo RLS (migración 0019).
 
 Con varias políticas de UPDATE, la fila vieja puede entrar por el USING de una y
 la nueva salir por el WITH CHECK de otra. Estas pruebas intentan esas

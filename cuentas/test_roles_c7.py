@@ -1,5 +1,5 @@
 """
-Paso 8 · C7: AC asigna y retira roles (AC·O7b AR, RR); GC autoriza o rechaza
+C7: AC asigna y retira roles (AC·O7b AR, RR); GC autoriza o rechaza
 los cambios de GC y AE (GC·O7b AU, RE). Incluye V10.
 """
 

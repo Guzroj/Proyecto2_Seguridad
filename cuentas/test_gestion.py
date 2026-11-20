@@ -1,8 +1,7 @@
 """
-Paso 7 · C15: AC crea, modifica y da de baja cuentas (AC·O7a CR, MO, BA).
+C15: AC crea, modifica y da de baja cuentas (AC·O7a CR, MO, BA).
 
-El motor de la matriz llega en el paso 13: aquí el gancho autorizar se activa
-en modo permisivo, salvo en las pruebas de fallo cerrado. La restricción "solo
+Aquí el gancho autorizar se activa en modo permisivo (el motor se prueba aparte), salvo en las pruebas de fallo cerrado. La restricción "solo
 AC" ya la aplica RLS en la base (pruebas *RLSTests).
 """
 

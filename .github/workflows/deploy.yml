@@ -263,7 +263,7 @@ jobs:
               --quiet
           fi
 
-      # Persona 4 · Sellos de la bitácora (Arquitectura §4.5): cada hora verifica la cadena y firma
+      # Sellos de la bitácora (Arquitectura §4.5): cada hora verifica la cadena y firma
       # su cabeza con la clave de certificados; el sello queda en la base y en Cloud Logging.
       - name: Crear o actualizar el Cloud Run Job del sellado de la bitácora
         run: |

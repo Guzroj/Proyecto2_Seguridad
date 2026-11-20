@@ -1,5 +1,5 @@
 """
-Paso 17c · RLS de las tablas de Django y allauth que quedaban sin políticas.
+RLS de las tablas de Django y allauth que quedaban sin políticas.
 
   account_emailaddress, account_emailconfirmation (correo: dato personal)
       Cada quien ve y actualiza lo suyo (también antes del segundo factor, como su

@@ -1,5 +1,5 @@
 """
-Paso 14a · O1–O3 de punta a punta: objetos reales creados con los servicios del
+O1–O3 de punta a punta: objetos reales creados con los servicios del
 dominio, atributos leídos de la base por el PEP y decisión del motor.
 Incluye V1, V16 y V17.
 """

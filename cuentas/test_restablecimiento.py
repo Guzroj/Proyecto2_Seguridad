@@ -1,5 +1,5 @@
 """
-Paso 11 · C17: restablecimiento del segundo factor con doble control.
+C17: restablecimiento del segundo factor con doble control.
 AC solicita (AC·O7d SO); un GC distinto, tras verificar la identidad fuera del
 sistema, autoriza (GC·O7d AU) o rechaza (RE). Al autorizar se invalidan los
 factores de la persona y se cierran sus sesiones.

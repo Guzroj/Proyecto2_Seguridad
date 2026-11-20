@@ -1,5 +1,5 @@
 """
-Bitácora (O8, Persona 4): persistencia, encadenamiento y su verificación, manipulación
+Bitácora (O8): persistencia, encadenamiento y su verificación, manipulación
 detectada, solo inserción (también para el dueño), negaciones que sobreviven al rollback,
 concurrencia sin bifurcaciones, minimización, permisos (motor y RLS) y RG4.
 """
@@ -23,7 +23,7 @@ from mediciones import services as mediciones
 from nucleo.acciones import Accion
 from nucleo.errores import AccesoDenegado, TransicionInvalida
 
-P4 = override_settings(AUTORIZACION_PROVISIONAL_PERMISIVA=True, VERDEAZUL_GANCHOS={
+CON_EMISION_REAL = override_settings(AUTORIZACION_PROVISIONAL_PERMISIVA=True, VERDEAZUL_GANCHOS={
     "usuarios_con_rol": "cuentas.roles.usuarios_con_rol",
     "registrar_evento": "bitacora.servicios.registrar_evento",
     "on_medicion_aprobada": "certificados.servicios.emitir",
@@ -114,7 +114,7 @@ class CadenaTests(TestCase):
         self.assertEqual(len(e.despues["lista"]), servicios.MAX_ELEMENTOS)
 
 
-@P4
+@CON_EMISION_REAL
 class ServiciosTests(TestCase):
     """Los servicios existentes ya llaman al gancho: ahora sus eventos quedan en la base."""
 
@@ -143,7 +143,7 @@ class ServiciosTests(TestCase):
         self.assertFalse(Periodo.objects.filter(nombre="2026-B").exists())  # RG4: fallo cerrado
 
 
-@P4
+@CON_EMISION_REAL
 class NegacionesFueraDelRollbackTests(TransactionTestCase):
     """Sin la transacción envolvente de TestCase: lo que se revierte de verdad, se revierte."""
 

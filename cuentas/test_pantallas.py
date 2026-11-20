@@ -1,5 +1,5 @@
 """
-Paso 18a · Pantallas de cuentas (O7a) y "Mi cuenta", de punta a punta: login con
+Pantallas de cuentas (O7a) y "Mi cuenta", de punta a punta: login con
 segundo factor, motor real, servicios y bitácora. Las vistas no deciden permisos:
 se comprueba que el motor los aplica y que los errores se ven como 403/404/400/409.
 """

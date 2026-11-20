@@ -1,14 +1,15 @@
 """
-Puntos de enganche entre Persona 2 (dominio) y Personas 3 y 4.
+Puntos de enganche entre el dominio y los módulos de autorización, cuentas, bitácora y
+certificados.
 
 Los servicios SIEMPRE llaman a estas funciones; qué implementación se ejecuta se
 decide en settings.VERDEAZUL_GANCHOS, sin tocar el código de los servicios:
 
     VERDEAZUL_GANCHOS = {
-        "autorizar":            "autorizacion.motor.autorizar",          # Persona 3
-        "usuarios_con_rol":     "cuentas.roles.usuarios_con_rol",        # Persona 3
-        "registrar_evento":     "bitacora.servicios.registrar_evento",   # Persona 4
-        "on_medicion_aprobada": "certificados.servicios.emitir",         # Persona 4
+        "autorizar":            "autorizacion.cliente.autorizar",        # motor de autorización
+        "usuarios_con_rol":     "cuentas.roles.usuarios_con_rol",        # cuentas
+        "registrar_evento":     "bitacora.servicios.registrar_evento",   # bitácora
+        "on_medicion_aprobada": "certificados.servicios.emitir",         # certificados
     }
 
 Mientras no se configuren, se usan las implementaciones *_provisional de abajo.
@@ -42,7 +43,7 @@ def _impl(nombre: str):
 # ===========================================================================
 def autorizar(usuario, accion: str, recurso=None, contexto: dict | None = None) -> None:
     """
-    Persona 3. Decide si `usuario` puede ejecutar `accion` (ver nucleo.acciones.Accion)
+    Motor de autorización. Decide si `usuario` puede ejecutar `accion` (ver nucleo.acciones.Accion)
     sobre `recurso` (instancia del modelo, ya leída de la BD y bloqueada).
     `contexto` lleva datos extra que no están en el recurso (p. ej. el período o la
     finca al CREAR, el técnico destino de una asignación).
@@ -58,7 +59,7 @@ def autorizar(usuario, accion: str, recurso=None, contexto: dict | None = None) 
 
 def usuarios_con_rol(rol: str):
     """
-    Persona 3. QuerySet de usuarios ACTIVOS con el rol vigente `rol`
+    Cuentas. QuerySet de usuarios ACTIVOS con el rol vigente `rol`
     ("TC", "VF", "GC", "AC", "AE", "PF"). Lo usa el servicio para escoger
     verificador al azar y para validar asignaciones (C19).
     """
@@ -77,7 +78,7 @@ def registrar_evento(
     detalle: str = "",
 ) -> None:
     """
-    Persona 4. Agrega un evento a la bitácora. Se llama DENTRO de la transacción de
+    Bitácora. Agrega un evento a la bitácora. Se llama DENTRO de la transacción de
     la operación (si la operación se revierte, el evento de éxito también: patrón
     outbox). Las negaciones (resultado="DENEGADO") se registran FUERA de la
     transacción revertida, así que también quedan.
@@ -97,7 +98,7 @@ def registrar_evento(
 
 def on_medicion_aprobada(medicion) -> None:
     """
-    Persona 4. Se llama DENTRO de la transacción de aprobación, con la medición ya en
+    Certificados. Se llama DENTRO de la transacción de aprobación, con la medición ya en
     APROBADA y bloqueada (select_for_update). Aquí se emite y firma el certificado.
     Si `medicion.version_de` no es None, es una versión enmendada: aplicar P2
     (si cambian las toneladas, revocar el vigente y emitir otro que lo referencie).
@@ -107,7 +108,7 @@ def on_medicion_aprobada(medicion) -> None:
 
 
 # ===========================================================================
-# Implementaciones provisionales (hasta que Personas 3 y 4 conecten las suyas)
+# Implementaciones provisionales (se usan si un gancho no está configurado)
 # ===========================================================================
 def autorizar_provisional(usuario, accion, recurso, contexto) -> None:
     # Fallo cerrado (RG5): sin motor de autorización, se niega... salvo que se
@@ -128,4 +129,4 @@ def registrar_evento_provisional(**evento) -> None:
 
 
 def on_medicion_aprobada_provisional(medicion) -> None:
-    log.info("Medición %s aprobada: aquí Persona 4 emite el certificado.", medicion.pk)
+    log.info("Medición %s aprobada (sin gancho de certificados configurado).", medicion.pk)
