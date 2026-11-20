@@ -83,12 +83,24 @@ CREATE OR REPLACE FUNCTION app_fase_interna() RETURNS boolean
     LANGUAGE sql STABLE
     AS $$ SELECT app_fase() IN ('ve_finca', 'certificado') AND current_user <> session_user $$;
 
+-- La fase se fija en el cuerpo y se restaura al salir. No se usa SET en la
+-- definición de la función: PostgreSQL exige ser superusuario para fijar un
+-- GUC propio (app.*) desde CREATE FUNCTION, y el rol dueño de Neon no lo es.
 CREATE OR REPLACE FUNCTION app_ve_parcela(p_parcela bigint) RETURNS boolean
-    LANGUAGE sql STABLE SECURITY DEFINER
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
     SET search_path = pg_catalog, public
-    SET app.fase = 've_finca'
-    AS $$ SELECT COALESCE((SELECT app_ve_finca(p.finca_id) FROM public.catalogo_parcela p
-                            WHERE p.id = p_parcela), false) $$;
+    AS $$
+DECLARE
+    v_fase text := current_setting('app.fase', true);
+    v_ok boolean;
+BEGIN
+    PERFORM set_config('app.fase', 've_finca', true);
+    SELECT COALESCE((SELECT app_ve_finca(p.finca_id) FROM public.catalogo_parcela p
+                      WHERE p.id = p_parcela), false) INTO v_ok;
+    PERFORM set_config('app.fase', COALESCE(v_fase, ''), true);
+    RETURN v_ok;
+END
+$$;
 
 {"".join(f"ALTER POLICY {p} ON {t} USING ({u});" + chr(10) for t, p, u in AJUSTES_17A)}
 {"".join(f"ALTER POLICY {p} ON {t} USING (app_fase_interna());" + chr(10) for t, p in INTERNAS_17A)}
@@ -135,17 +147,23 @@ CREATE POLICY motivodevolucion_lectura ON mediciones_motivodevolucion FOR SELECT
 
 CREATE OR REPLACE FUNCTION certificado_datos_propietario(p_medicion uuid)
     RETURNS TABLE (nombre_completo text, identificacion text)
-    LANGUAGE sql STABLE SECURITY DEFINER
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
     SET search_path = pg_catalog, public
-    SET app.fase = 'certificado'
     AS $$
+DECLARE
+    v_fase text := current_setting('app.fase', true);
+BEGIN
+    PERFORM set_config('app.fase', 'certificado', true);
+    RETURN QUERY
         SELECT d.nombre_completo::text, d.identificacion::text
           FROM public.mediciones_medicion m
           JOIN public.catalogo_parcela p ON p.id = m.parcela_id
           JOIN public.catalogo_finca f ON f.id = p.finca_id
           JOIN public.catalogo_datospropietario d ON d.usuario_id = f.propietario_id
-         WHERE m.id = p_medicion AND m.estado = 'APROBADA' AND m.verificador_id = app_sujeto()
-    $$;
+         WHERE m.id = p_medicion AND m.estado = 'APROBADA' AND m.verificador_id = app_sujeto();
+    PERFORM set_config('app.fase', COALESCE(v_fase, ''), true);
+END
+$$;
 REVOKE ALL ON FUNCTION certificado_datos_propietario(uuid) FROM PUBLIC;
 DO $$
 BEGIN

@@ -60,14 +60,18 @@ CREATE OR REPLACE FUNCTION bitacora_hash(p_anterior text, p_canonico text) RETUR
     LANGUAGE sql IMMUTABLE
     AS $$ SELECT encode(sha256(convert_to(p_anterior || p_canonico, 'UTF8')), 'hex') $$;
 
+-- La fase se fija en el cuerpo y se restaura al salir. No se usa SET en la
+-- definición de la función: PostgreSQL exige ser superusuario para fijar un
+-- GUC propio (app.*) desde CREATE FUNCTION, y el rol dueño de Neon no lo es.
 CREATE OR REPLACE FUNCTION bitacora_encadenar() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path = pg_catalog, public
-    SET app.fase = 'bitacora'
     AS $$
 DECLARE
     cabeza record;
+    v_fase text := current_setting('app.fase', true);
 BEGIN
+    PERFORM set_config('app.fase', 'bitacora', true);
     IF current_setting('transaction_isolation') <> 'read committed' THEN
         RAISE EXCEPTION 'Bitácora: solo se escribe en READ COMMITTED (la cabeza de la cadena debe ser la última confirmada).'
             USING ERRCODE = 'insufficient_privilege';
@@ -78,6 +82,7 @@ BEGIN
     NEW.hash_anterior := COALESCE(cabeza.hash, repeat('0', 64));
     NEW.momento := clock_timestamp();
     NEW.hash := public.bitacora_hash(NEW.hash_anterior, public.bitacora_canonico(NEW));
+    PERFORM set_config('app.fase', COALESCE(v_fase, ''), true);
     RETURN NEW;
 END
 $$;
