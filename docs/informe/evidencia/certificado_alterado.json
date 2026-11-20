@@ -6,7 +6,7 @@
       "reemplaza_a": null
     },
     "emisor": {
-      "huella_clave": "31c15a5f71810029282ff061295b5843a44a0ace33c0714e84386b1aa7d0af45",
+      "huella_clave": "14428e8d992fa57dfb65003add2e7332a1c2372b5bd584b7b942fec7dba907c2",
       "nombre": "Verdeazul Carbono S.A."
     },
     "finca": {
@@ -45,9 +45,9 @@
   },
   "firma": {
     "algoritmo": "Ed25519",
-    "clave_publica": "SBgxkG9GI47rT5aFBSMWEo8ZMCScWwSMX7BzooW67W4=",
-    "huella_clave": "31c15a5f71810029282ff061295b5843a44a0ace33c0714e84386b1aa7d0af45",
-    "valor": "Ha8WbmwlrnL47oea7cBPoONZ1SOYooKC99+lH7heedbsz387OCUO/Txs/IYUJShztqhh8fBUGweN4sQv4MoOAw=="
+    "clave_publica": "m3gWdVaPFpmhf4uQqCVvtj4EGzWjD4z1140aeZkCnLY=",
+    "huella_clave": "14428e8d992fa57dfb65003add2e7332a1c2372b5bd584b7b942fec7dba907c2",
+    "valor": "5GXqcZ0TiWGOC4CCBfWbBJgR9fRjJRtl25smwSbu9v4iR5mF8kMDLcNMOga/PO4r++5Oka6vMkWvDkEHi3rVAw=="
   },
   "formato": "verdeazul-certificado/1"
 }
