@@ -94,6 +94,11 @@ publica las imágenes `app` y `autorizador` con dos etiquetas: la versión semá
 
 | Ejecución | Fecha (UTC) | Commit en `main` | Etiquetas publicadas | Resultado |
 |---|---|---|---|---|
+| #18 | 2026-11-21 04:33 | `e944e57` (PR #30) | **`v1.1.5`**, `sha-e944e57` | Éxito |
+| #17 | 2026-11-21 01:29 | `9f200d7` (PR #28) | `v1.1.4`, `sha-9f200d7` | Éxito |
+| #16 | 2026-11-21 00:06 | `7a5e491` | `v1.1.3`, `sha-7a5e491` | Éxito |
+| #15 | 2026-11-21 00:04 | `00c4ca8` | `v1.1.2`, `sha-00c4ca8` | Éxito |
+| #14 | 2026-11-20 20:40 | `a9addfb` (PR #25) | `v1.1.1`, `sha-a9addfb` | Éxito |
 | #13 | 2026-11-20 20:09 | `e7de6fb` (PR #24, versionado semántico automático) | **`v1.1.0`**, `sha-e7de6fb` | Éxito |
 | #12 | 2026-11-20 19:36 | `4e57c83` (actualización del README) | `v1.0.0`, `sha-4e57c83` | Éxito |
 | #11 | 2026-11-20 17:39 | `41e20ab` (PR #22) | `v1.0.0`, `sha-41e20ab` | Éxito |
@@ -116,7 +121,7 @@ reciente, y su etiqueta `sha-` es el hash corto del commit desplegado.
 
 ```bash
 gcloud run deploy verdeazul --region us-east1 \
-  --image us-east1-docker.pkg.dev/project-4d85c806-d471-4964-b73/verdeazul/app:v1.1.0
+  --image us-east1-docker.pkg.dev/project-4d85c806-d471-4964-b73/verdeazul/app:v1.1.5
 gcloud run deploy verdeazul --region us-east1 \
   --image us-east1-docker.pkg.dev/project-4d85c806-d471-4964-b73/verdeazul/app:sha-db5c48c
 ```

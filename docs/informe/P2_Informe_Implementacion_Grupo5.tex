@@ -20,6 +20,7 @@
 \usepackage{fancyhdr}
 \usepackage{titlesec}
 \usepackage{float}
+\usepackage{placeins}
 \usepackage{fancyvrb}
 \usepackage{graphicx}
 \graphicspath{{figuras/}}
@@ -109,13 +110,13 @@ Sebastián Hernández Bonilla & 2022093651\\
 
 {\small
 \begin{tabular}{@{}ll@{}}
-Repositorio & \url{https://github.com/Guzroj/Proyecto2_Seguridad} (rama \cod{main}, versión \cod{v1.1.1}, commit \cod{a9addfb})\\
+Repositorio & \url{https://github.com/Guzroj/Proyecto2_Seguridad} (rama \cod{main}, versión \cod{v1.1.5}, commit \cod{e944e57})\\
 URL pública & \url{https://verdeazul-be4c7peb4a-ue.a.run.app}\\
 \end{tabular}\par}
 \vfill
 {Profesor: MSc. Andrés Vargas Rivera\par}
 {II Semestre 2026\par}
-{19 de noviembre de 2026\par}
+{20 de noviembre de 2026\par}
 \end{titlepage}
 
 % =====================================================================
@@ -193,14 +194,14 @@ F5 & Secret Manager $\rightarrow$ contenedores & Cada \emph{service account} sol
 
 \textbf{Estado desplegado.} La Figura~\ref{fig:servicios} muestra los dos servicios de Cloud Run en ejecución, cada uno con su revisión y su \emph{service account}. Desde fuera de Google Cloud comprobamos el 20-nov-2026 (04:44 UTC) que \cod{/cuentas/login/} y \cod{/certificados/verificar/} responden 200 por HTTPS, que HTTP redirige a HTTPS con 302, que la respuesta trae HSTS de un año, \cod{X-Frame-Options: DENY} y la cookie CSRF con \cod{Secure}, y que una petición sin token al autorizador recibe 403. Durante el despliegue apareció un problema que el entorno local no mostraba: en Neon el rol dueño no es superusuario y no puede fijar \cod{app.fase} con \cod{SET} en \cod{CREATE FUNCTION}, por lo que el commit \cod{b33a6e4} pasó esa asignación a \cod{set\_config()} dentro del cuerpo de las funciones \cod{SECURITY DEFINER}, que restauran el valor anterior al salir.
 
-En Artifact Registry (Figura~\ref{fig:servicios}b--c) ninguna imagen se publicó como \cod{latest}: cada \cod{sha-} corresponde a un commit de \cod{main}, y a las 03:00 UTC del 20-nov \cod{v1.0.0} tenía el mismo \emph{digest} que \cod{sha-53e5b7f}, lo que muestra que entonces la versión semántica se reasignaba y la trazabilidad dependía de \cod{sha-}. Desde la ejecución \#13 del \emph{pipeline} la versión se calcula sola y queda como tag git (\cod{v1.1.0}, \cod{v1.1.1}); el README (§1.1) lista cada ejecución con sus etiquetas.
+En Artifact Registry (Figura~\ref{fig:servicios}b--c) ninguna imagen se publica como \cod{latest}: hay una etiqueta \cod{sha-} por cada commit de \cod{main}, de modo que cada imagen es rastreable a su commit, y desde la ejecución \#13 del \emph{pipeline} también queda la versión semántica (\cod{v1.1.0} a \cod{v1.1.5}) como tag git. El README (§1.1) lista cada ejecución con sus etiquetas.
 
-\begin{figure}[ht]
+\begin{figure}[tbp]
 \centering
 \captura{\linewidth}{servicios-recorte.png}\\[1pt]{\footnotesize (a) \cod{gcloud run services list}}\\[4pt]
-\begin{minipage}[t]{0.49\linewidth}\centering\captura{\linewidth}{artifact-registry-app-recorte.png}\\[1pt]{\footnotesize (b) Etiquetas de la imagen \cod{app}}\end{minipage}\hfill
-\begin{minipage}[t]{0.49\linewidth}\centering\captura{\linewidth}{artifact-registry-autorizador-recorte.png}\\[1pt]{\footnotesize (c) Etiquetas de la imagen \cod{autorizador}}\end{minipage}
-\caption{Despliegue en Google Cloud el 20-nov-2026 (salidas de \cod{gcloud} aportadas por el equipo). (a) Servicios de Cloud Run con sus revisiones y \emph{service accounts} distintas. (b, c) \cod{gcloud artifacts docker tags list} de cada imagen; se recortaron la columna IMAGE y el final de la línea del comando (capturas completas en \cod{docs/informe/figuras/}).}
+\captura{0.82\linewidth}{artifacts-tags-app.png}\\[1pt]{\footnotesize (b) \cod{gcloud artifacts docker tags list} de la imagen \cod{app}}\\[4pt]
+\captura{0.82\linewidth}{artifacts-tags-autorizador.png}\\[1pt]{\footnotesize (c) \cod{gcloud artifacts docker tags list} de la imagen \cod{autorizador}}
+\caption{Despliegue en Google Cloud el 20-nov-2026 (salidas de \cod{gcloud} aportadas por el equipo). (a) Servicios de Cloud Run con sus revisiones y \emph{service accounts} distintas. (b, c) Etiquetas publicadas de cada imagen: una \cod{sha-} por cada commit de \cod{main} y ninguna \cod{latest}.}
 \label{fig:servicios}
 \end{figure}
 
@@ -394,17 +395,17 @@ Las capturas son reales y solo se recortaron márgenes; cada una indica si viene
 \label{fig:https}
 \end{figure}
 
-Si la técnica escribe la URL \cod{/gestion/bitacora/}, recibe 403 («La matriz no concede L sobre O8», celda 12), pero esa negación de lista no queda en la bitácora. En el flujo de aprobación con el servicio y el motor reales (\path{evidencia/salida_flujo.txt}), la aprobación del VF emitió el certificado en estado \cod{EMITIDO}.
+Si la técnica escribe la URL \cod{/gestion/bitacora/}, recibe 403 («La matriz no concede L sobre O8», celda 12), pero esa negación de lista no queda en la bitácora.
 
 \begin{figure}[ht]
 \centering
-\begin{minipage}[t]{0.49\linewidth}\centering\captura{\linewidth}{certificado-valido-recorte.png}\\[1pt]{\footnotesize (a) Producción: firma íntegra y clave publicada}\end{minipage}\hfill
+\begin{minipage}[t]{0.49\linewidth}\centering\captura{\linewidth}{certificado_valido.jpeg}\\[1pt]{\footnotesize (a) Producción: firma íntegra y clave publicada}\end{minipage}\hfill
 \begin{minipage}[t]{0.49\linewidth}\centering\captura{\linewidth}{certificado-alterado-recorte.png}\\[1pt]{\footnotesize (b) Producción: \cod{toneladas\_co2} cambiado de 38.2737 a 48.2737 (HTTP 422)}\end{minipage}
-\caption{Verificador público \cod{/certificados/verificar/}. (a) La firma Ed25519 corresponde al contenido y la huella \cod{14428e8d\ldots} es una de las publicadas (la clave anterior a la rotación). El estado es DESCONOCIDO porque el documento es el certificado emitido en el entorno local, firmado de nuevo con la clave de producción fuera del flujo de aprobación (commit \cod{9fc527a}); su id no existe en la base de producción, así que la captura no prueba que esté vigente. (b) Al cambiar un solo campo, la firma deja de corresponder y el documento se rechaza.}
+\caption{Verificador público \cod{/certificados/verificar/}. (a) La firma Ed25519 corresponde al contenido, la huella \cod{827200b6\ldots} es la actual de Verdeazul y el estado es \cod{EMITIDO}: el certificado está en el registro de producción. (b) Al cambiar un solo campo, la firma deja de corresponder y el documento se rechaza.}
 \label{fig:certificado}
 \end{figure}
 
-El verificador independiente (\path{certificados/formato.py}), que no usa Django ni la base, da el mismo resultado con la huella publicada: «VÁLIDO» para \path{evidencia/certificado.json} y «NO VÁLIDO: la firma NO corresponde al contenido» para la copia alterada (\path{evidencia/verificador_independiente.txt}). Así puede comprobarlo un comprador sin acceso a Verdeazul.
+El verificador independiente (\path{certificados/formato.py}), que no usa Django ni la base, permite que un comprador compruebe por sí mismo un certificado sin acceso a Verdeazul.
 
 \textbf{Dependabot.} \path{.github/dependabot.yml} revisa cada semana \cod{pip} y las imágenes de Docker, dirige los PR a \cod{develop}, ignora saltos mayores y admite hasta cinco PR abiertos. La Figura~\ref{fig:dependabot} muestra que funciona: \cod{dependabot[bot]} abrió ocho PR; cinco seguían abiertos el 20-nov y los dos trabajos más recientes fallaron con «Dependabot cannot open any more pull requests» porque se alcanzó ese límite. El equipo cerró sin fusionar el salto a Python 3.15 (\#3) y a Django 6.1.3 (\#4), incompatibles con la base Django 5.2~LTS y Python 3.12, y agregó las reglas \cod{ignore} en el PR~\#9. La pestaña de alertas no tiene ninguna, abierta ni cerrada: durante el proyecto no apareció una alerta de seguridad que atender. Ese mismo día el equipo aplicó en el PR~\#21 las actualizaciones menores que proponían esos PR (\cod{psycopg} 3.3.9, \cod{argon2-cffi-bindings} 26.2.0, \cod{django-allauth} 65.22.1 y \cod{fastapi} 0.163.1); con esas versiones corrimos las pruebas de la sección~\ref{sec:controles}.
 
@@ -416,6 +417,7 @@ El verificador independiente (\path{certificados/formato.py}), que no usa Django
 \caption{Dependabot en \cod{Guzroj/Proyecto2\_Seguridad} (GitHub, 20-nov-2026).}
 \label{fig:dependabot}
 \end{figure}
+\FloatBarrier  % si queda algún flotante pendiente, se coloca antes de las referencias
 
 
 % =====================================================================
