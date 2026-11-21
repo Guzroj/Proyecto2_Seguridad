@@ -20,6 +20,7 @@
 \usepackage{fancyhdr}
 \usepackage{titlesec}
 \usepackage{float}
+\usepackage{placeins}
 \usepackage{fancyvrb}
 \usepackage{graphicx}
 \graphicspath{{figuras/}}
@@ -109,13 +110,13 @@ Sebastián Hernández Bonilla & 2022093651\\
 
 {\small
 \begin{tabular}{@{}ll@{}}
-Repositorio & \url{https://github.com/Guzroj/Proyecto2_Seguridad} (rama \cod{develop}, commit \cod{9fc527a})\\
+Repositorio & \url{https://github.com/Guzroj/Proyecto2_Seguridad} (rama \cod{main}, versión \cod{v1.1.5}, commit \cod{e944e57})\\
 URL pública & \url{https://verdeazul-be4c7peb4a-ue.a.run.app}\\
 \end{tabular}\par}
 \vfill
 {Profesor: MSc. Andrés Vargas Rivera\par}
 {II Semestre 2026\par}
-{19 de noviembre de 2026\par}
+{20 de noviembre de 2026\par}
 \end{titlepage}
 
 % =====================================================================
@@ -170,7 +171,7 @@ La Parte 1 diseñó una instalación local con cinco zonas de red, OPA como moto
 \label{fig:arquitectura}
 \end{figure}
 
-\textbf{Componentes e imágenes.} Cada componente tiene su propio \cod{Dockerfile}. La imagen \cod{app} contiene Django, los servicios de dominio y el PEP; la imagen \cod{autorizador} copia solo el paquete \path{autorizacion/} y no incluye Django ni \cod{psycopg}, de modo que el PDP no puede leer la base aunque se comprometa. Ambas parten de \cod{python:3.12-slim} y terminan con \cod{USER app} (uid 10001): ningún contenedor corre como \emph{root}. En cada \emph{push} a \cod{main}, el \emph{pipeline} se autentica con \emph{Workload Identity Federation}, construye las dos imágenes con dos etiquetas explícitas: la versión semántica \cod{vX.Y.Z} (auto-incrementada según \emph{Conventional Commits}: \cod{fix} aumenta \emph{patch}, \cod{feat} aumenta \emph{minor} y un cambio incompatible aumenta \emph{major}) y \cod{sha-<hash corto>}; ejecuta las migraciones en un \emph{job} con el rol dueño y despliega ambos servicios por la etiqueta \cod{sha-}, que ata cada revisión a un commit. La versión semántica avanza en cada \emph{push} a \cod{main} y se persiste como tag git \cod{vX.Y.Z} (el \emph{push} con \cod{GITHUB\_TOKEN} no vuelve a disparar el \emph{workflow}, así que no hay bucle); un tag git manual \cod{v*} publica esa versión exacta \cite{gcp-ar-tags}.
+\textbf{Componentes e imágenes.} Cada componente tiene su propio \cod{Dockerfile}. La imagen \cod{app} contiene Django, los servicios de dominio y el PEP; la imagen \cod{autorizador} copia solo el paquete \path{autorizacion/} y no incluye Django ni \cod{psycopg}, de modo que el PDP no puede leer la base aunque se comprometa. Ambas parten de \cod{python:3.12-slim} y terminan con \cod{USER app} (uid 10001): ningún contenedor corre como \emph{root}. En cada \emph{push} a \cod{main}, el \emph{pipeline} se autentica con \emph{Workload Identity Federation}, construye las dos imágenes con dos etiquetas explícitas, la versión semántica \cod{vX.Y.Z} (\cod{fix} sube \emph{patch}, \cod{feat} sube \emph{minor}, según \emph{Conventional Commits}) y \cod{sha-<hash corto>}, ejecuta las migraciones en un \emph{job} con el rol dueño y despliega ambos servicios por la etiqueta \cod{sha-}, que ata cada revisión a un commit \cite{gcp-ar-tags}.
 
 \begin{table}[ht]
 \centering\footnotesize
@@ -191,12 +192,16 @@ F5 & Secret Manager $\rightarrow$ contenedores & Cada \emph{service account} sol
 
 \textbf{Flujo de una petición autenticada} (un VF aprueba una medición). (1)~El navegador envía \cod{POST /gestion/mediciones/<id>/aprobar/} por HTTPS con la cookie \cod{\_\_Host-vz\_sesion} y el token CSRF. (2)~\cod{ControlSesionMiddleware} valida la sesión registrada (inactividad por rol, máximo de 10~h) y \cod{ContextoRLSMiddleware} fija \cod{app.usuario\_id} en la conexión. (3)~\path{mediciones/services.py:aprobar_medicion} bloquea la medición con \cod{SELECT \ldots{} FOR UPDATE}. (4)~El PEP (\path{autorizacion/pep.py}) lee de la base los roles vigentes, el estado de la medición y del período, los actores, los técnicos y la edad del segundo factor, y \path{autorizacion/cliente.py} consulta al motor con el token OIDC; si el motor no responde en 3~s o responde algo inválido, se niega (RG5). (5)~El motor aplica C2, H4 y la reautenticación de 300~s; si niega, se responde 403, 404 fuera de alcance o un reto de segundo factor, y la negación queda en la bitácora. (6)~El servicio revalida el estado y la independencia; el \cod{UPDATE} pasa por el disparador de \cod{mediciones/0003}, que vuelve a comprobar H4 y C2. (7)~En la misma transacción se escriben los eventos encadenados y \path{certificados/servicios.py:emitir} firma el certificado; si algo falla, no queda ni la aprobación ni el certificado.
 
-\textbf{Estado desplegado.} La Figura~\ref{fig:servicios} muestra los dos servicios de Cloud Run en ejecución, cada uno con su revisión y su \emph{service account}. Desde fuera de Google Cloud comprobamos el 20-nov-2026 (04:44 UTC) que \cod{/cuentas/login/} y \cod{/certificados/verificar/} responden 200 por HTTPS, que HTTP redirige a HTTPS con 302, que la respuesta trae HSTS de un año, \cod{X-Frame-Options: DENY} y la cookie CSRF con \cod{Secure}, y que una petición sin token al autorizador recibe 403. La dirección \cod{verdeazul-444812071990.us-east1.run.app} es otra URL del mismo servicio. Durante el despliegue apareció un problema que el entorno local no mostraba: en Neon el rol dueño no es superusuario y no puede fijar \cod{app.fase} con \cod{SET} en \cod{CREATE FUNCTION}, por lo que el commit \cod{b33a6e4} pasó esa asignación a \cod{set\_config()} dentro del cuerpo de las funciones \cod{SECURITY DEFINER}, que restauran el valor anterior al salir.
+\textbf{Estado desplegado.} La Figura~\ref{fig:servicios} muestra los dos servicios de Cloud Run en ejecución, cada uno con su revisión y su \emph{service account}. Desde fuera de Google Cloud comprobamos el 20-nov-2026 (04:44 UTC) que \cod{/cuentas/login/} y \cod{/certificados/verificar/} responden 200 por HTTPS, que HTTP redirige a HTTPS con 302, que la respuesta trae HSTS de un año, \cod{X-Frame-Options: DENY} y la cookie CSRF con \cod{Secure}, y que una petición sin token al autorizador recibe 403. Durante el despliegue apareció un problema que el entorno local no mostraba: en Neon el rol dueño no es superusuario y no puede fijar \cod{app.fase} con \cod{SET} en \cod{CREATE FUNCTION}, por lo que el commit \cod{b33a6e4} pasó esa asignación a \cod{set\_config()} dentro del cuerpo de las funciones \cod{SECURITY DEFINER}, que restauran el valor anterior al salir.
 
-\begin{figure}[ht]
+En Artifact Registry (Figura~\ref{fig:servicios}b--c) ninguna imagen se publica como \cod{latest}: hay una etiqueta \cod{sha-} por cada commit de \cod{main}, de modo que cada imagen es rastreable a su commit, y desde la ejecución \#13 del \emph{pipeline} también queda la versión semántica (\cod{v1.1.0} a \cod{v1.1.5}) como tag git. El README (§1.1) lista cada ejecución con sus etiquetas.
+
+\begin{figure}[tbp]
 \centering
-\captura{\linewidth}{servicios-recorte.png}
-\caption{Servicios de Cloud Run desplegados (\cod{gcloud run services list}, 20-nov-2026, salida aportada por el equipo): la aplicación pública y el autorizador, con sus revisiones \cod{verdeazul-00005-rxg} y \cod{verdeazul-autorizador-00003-wg8} y \emph{service accounts} distintas.}
+\captura{\linewidth}{servicios-recorte.png}\\[1pt]{\footnotesize (a) \cod{gcloud run services list}}\\[4pt]
+\captura{0.82\linewidth}{artifacts-tags-app.png}\\[1pt]{\footnotesize (b) \cod{gcloud artifacts docker tags list} de la imagen \cod{app}}\\[4pt]
+\captura{0.82\linewidth}{artifacts-tags-autorizador.png}\\[1pt]{\footnotesize (c) \cod{gcloud artifacts docker tags list} de la imagen \cod{autorizador}}
+\caption{Despliegue en Google Cloud el 20-nov-2026 (salidas de \cod{gcloud} aportadas por el equipo). (a) Servicios de Cloud Run con sus revisiones y \emph{service accounts} distintas. (b, c) Etiquetas publicadas de cada imagen: una \cod{sha-} por cada commit de \cod{main} y ninguna \cod{latest}.}
 \label{fig:servicios}
 \end{figure}
 
@@ -205,7 +210,7 @@ F5 & Secret Manager $\rightarrow$ contenedores & Cada \emph{service account} sol
 \label{sec:controles}
 % =====================================================================
 
-La Tabla~\ref{tab:controles} relaciona cada control obligatorio con el problema que resuelve, el código que lo implementa y la prueba automatizada que lo verifica. Todas las pruebas citadas se ejecutaron el 20-nov-2026 sobre \cod{develop} (\cod{9fc527a}) en Docker Compose (PostgreSQL 17, motor y Django en contenedores separados): \textbf{663 pruebas correctas y 5 omitidas} en la imagen de Django (las 5 omitidas son las de FastAPI, que no está instalado en esa imagen) y \textbf{109 correctas y 7 omitidas} en el contenedor del motor.
+La Tabla~\ref{tab:controles} relaciona cada control obligatorio con el problema que resuelve, el código que lo implementa y la prueba automatizada que lo verifica. Todas las pruebas citadas se ejecutaron el 20-nov-2026 sobre \cod{main} (\cod{a9addfb}) en Docker Compose (PostgreSQL 17, motor y Django en contenedores separados): \textbf{663 pruebas correctas y 5 omitidas} en la imagen de Django (las omitidas son las de FastAPI, que no está instalado en esa imagen) y \textbf{109 correctas y 7 omitidas} en el contenedor del motor.
 
 \begin{small}
 \setlength{\tabcolsep}{4pt}
@@ -231,9 +236,9 @@ La Tabla~\ref{tab:controles} relaciona cada control obligatorio con el problema 
 \footnotesize Disparadores y restricciones & \footnotesize Los dos incidentes de la carta: medición cambiada tras aprobarse y certificado doble. & \footnotesize \cod{catalogo/0003} y \cod{mediciones/0003}: H4 (aprobada o de período cerrado no cambia), máquina de estados, C13, C19, C20 y ningún \cod{DELETE} (RG1). Índice único parcial \cod{certificado\_vigente} y disparadores de \cod{certificados/0002}. & \footnotesize \path{mediciones/test_disparadores.py} y \cod{DisparadoresTests} de certificados atacan con SQL directo como dueño de la base.\\
 \footnotesize Enmiendas & \footnotesize Corregir sin borrar la historia. & \footnotesize C11 y C3 crean una versión enlazada (\cod{version\_de}); la original no cambia; P2 revoca y reemite el certificado solo si cambian las toneladas. & \footnotesize \cod{EnmiendaTests}; \path{certificados/test_certificados.py::P2Tests}.\\
 \multicolumn{4}{@{}l}{\footnotesize\textbf{Auditoría}}\\
-\footnotesize Bitácora encadenada & \footnotesize Quién hizo qué, incluso ante quien puede escribir en la base. & \footnotesize \cod{bitacora\_evento}: un disparador \cod{BEFORE INSERT} con candado consultivo fija secuencia, hora y $h_n=\mathrm{SHA256}(h_{n-1}\,\|\,\mathrm{can}(e_n))$; \cod{UNIQUE(hash\_anterior)}; UPDATE y DELETE rechazados aun al dueño; \cod{app\_runtime} sin UPDATE, DELETE ni TRUNCATE. Las negaciones de servicios y de lecturas de un objeto se escriben fuera de la transacción revertida; las de listas no se registran (lo comprobamos en local). Las lecturas concedidas de O1, O4, O6 y O8 se registran (RG4). Sellos horarios firmados con Ed25519 (\path{bitacora/sellos.py}). & \footnotesize \path{bitacora/test_bitacora.py}: \cod{CadenaTests}, \path{NegacionesFueraDelRollbackTests}, \allowbreak \cod{SellosTests} (reescritura completa y corte del final detectados).\\
+\footnotesize Bitácora encadenada & \footnotesize Quién hizo qué, incluso ante quien puede escribir en la base. & \footnotesize Un disparador \cod{BEFORE INSERT} con candado consultivo fija secuencia, hora y $h_n=\mathrm{SHA256}(h_{n-1}\,\|\,\mathrm{can}(e_n))$; UPDATE y DELETE rechazados aun al dueño. Las negaciones de servicios y de objetos se escriben fuera de la transacción revertida; las de listas no se registran. Lecturas de O1, O4, O6 y O8 registradas (RG4); sellos horarios Ed25519 (\path{bitacora/sellos.py}). & \footnotesize \path{bitacora/test_bitacora.py}: \cod{CadenaTests}, \path{NegacionesFueraDelRollbackTests}, \allowbreak \cod{SellosTests}.\\
 \multicolumn{4}{@{}l}{\footnotesize\textbf{Certificados}}\\
-\footnotesize Firma Ed25519 & \footnotesize Un comprador debe confiar en el documento sin acceso a la base. & \footnotesize Emisión automática en la transacción de aprobación (gancho \cod{on\_medicion\_aprobada}); JSON canónico con prefijo de dominio firmado con Ed25519; la clave pública y su huella viajan en el documento; la privada solo existe en la variable de entorno (\path{certificados/firma.py}). La verificación separa \emph{íntegro} de \emph{clave de Verdeazul} (huella en \cod{CERTIFICADO\_CLAVES\_CONFIABLES}); el verificador independiente es \path{certificados/formato.py}. & \footnotesize \cod{EmisionTests}, \cod{ManipulacionTests} (contenido, firma, re-firma con otra clave, claves duplicadas), \cod{VerificacionPublicaTests}; Figura~\ref{fig:certificado}.\\
+\footnotesize Firma Ed25519 & \footnotesize Un comprador debe confiar en el documento sin acceso a la base. & \footnotesize Emisión en la transacción de aprobación (\cod{on\_medicion\_aprobada}); JSON canónico firmado con Ed25519 con la clave pública y su huella incrustadas (\path{certificados/firma.py}). La verificación separa \emph{íntegro} de \emph{clave de Verdeazul} (\cod{CERTIFICADO\_CLAVES\_CONFIABLES}); verificador independiente: \path{certificados/formato.py}. & \footnotesize \cod{EmisionTests}, \cod{ManipulacionTests} (re-firma con otra clave incluida), \cod{VerificacionPublicaTests}; Figura~\ref{fig:certificado}.\\
 \multicolumn{4}{@{}l}{\footnotesize\textbf{Protección de la aplicación}}\\
 \footnotesize Entradas y SQL & \footnotesize Inyección SQL, asignación masiva, inyección de fórmulas en CSV. & \footnotesize ORM de Django; el SQL propio fuera de migraciones usa cadenas fijas o parámetros \cod{\%s}; formularios y servicios de lista blanca (\cod{DatoInvalido}); GeoJSON validado con \cod{shapely}; prefijo \cod{'} en el CSV de exportación. & \footnotesize Pruebas de servicios; \path{catalogo/test_traslape.py}; \cod{ExportarTests}.\\
 \footnotesize TLS & \footnotesize Credenciales o sesiones interceptadas. & \footnotesize TLS de Cloud Run; con \cod{DEBUG=false}, redirección a HTTPS, HSTS, \cod{SECURE\_PROXY\_SSL\_HEADER} y TLS hacia Neon. & \footnotesize Encabezados reales de la URL pública (Figura~\ref{fig:https}).\\
@@ -269,9 +274,9 @@ La Tabla~\ref{tab:controles} relaciona cada control obligatorio con el problema 
 \end{tabularx}
 \end{table}
 
-\textbf{Clave de firma.} Se genera con \cod{manage.py generar\_clave\_certificados}, que imprime la clave privada una sola vez y su huella pública. La privada vive en \cod{verdeazul-certificado-clave} y nunca se escribe en la base, la bitácora ni los registros; la huella de producción (\cod{14428e8d\ldots907c2}) está fijada en \cod{CERTIFICADO\_CLAVES\_CONFIABLES} dentro de \cod{deploy.yml} y publicada en el README, así la confianza no depende de lo que diga el documento. Las pruebas usan una clave efímera (\path{verdeazul/pruebas.py}). Para rotar, se agrega la huella nueva sin retirar las anteriores, de modo que los certificados emitidos sigan verificando.
+\textbf{Clave de firma.} Se genera con \cod{manage.py generar\_clave\_certificados}, que imprime la clave privada una sola vez y su huella pública. La privada vive en \cod{verdeazul-certificado-clave} y nunca se escribe en la base, la bitácora ni los registros. El 20-nov el equipo rotó la clave (commit \cod{e062bff}): la huella actual es \cod{827200b6\ldots5db8} y la anterior, \cod{14428e8d\ldots907c2}, se mantiene en \cod{CERTIFICADO\_CLAVES\_CONFIABLES} para que los certificados y los sellos de la bitácora ya firmados sigan verificando. Ambas están fijadas en \cod{deploy.yml} y se publican en \cod{/certificados/clave-publica/}, así la confianza no depende de lo que diga el documento. Las pruebas usan una clave efímera (\path{verdeazul/pruebas.py}).
 
-\textbf{Configuración comprobada.} La Figura~\ref{fig:secretos} confirma en Google Cloud los siete secretos, que la revisión \cod{verdeazul-00005-rxg} recibe seis de ellos como referencias a Secret Manager (las variables \cod{AUTORIZADOR\_URL} y \cod{CERTIFICADO\_CLAVES\_CONFIABLES} no son secretas y van como valores) y que sobre \cod{verdeazul-certificado-clave} solo tienen \cod{secretAccessor} \cod{verdeazul-app} y \cod{verdeazul-deploy}. El repositorio contiene únicamente los nombres de los secretos, nunca sus valores. La segunda cuenta es la identidad de GitHub Actions, que entra por WIF restringido al repositorio y sin claves JSON de larga vida; ese permiso amplía quién puede leer la clave de firma y es un candidato a retirar. Según el README, \cod{verdeazul-migrate} solo accede a la cadena del dueño y a \cod{SECRET\_KEY}, y \cod{verdeazul-autorizador} a ningún secreto; esas dos políticas no las capturamos. Las referencias usan la versión \cod{latest}, que Cloud Run resuelve al iniciar cada instancia; Google recomienda fijar una versión concreta \cite{gcp-run-secrets}. Secret Manager cifra los valores en reposo con AES-256 sin configuración adicional \cite{gcp-sm-enc}.
+\textbf{Configuración comprobada.} La Figura~\ref{fig:secretos} confirma en Google Cloud los siete secretos, que la revisión \cod{verdeazul-00005-rxg} recibe seis de ellos como referencias a Secret Manager (las variables \cod{AUTORIZADOR\_URL} y \cod{CERTIFICADO\_CLAVES\_CONFIABLES} no son secretas y van como valores) y que sobre \cod{verdeazul-certificado-clave} solo tienen \cod{secretAccessor} \cod{verdeazul-app} y \cod{verdeazul-deploy}. El repositorio contiene únicamente los nombres de los secretos, nunca sus valores. La segunda cuenta es la identidad de GitHub Actions, que entra por WIF restringido al repositorio y sin claves JSON de larga vida; ese permiso amplía quién puede leer la clave de firma y es un candidato a retirar. Las referencias usan la versión \cod{latest}, que Cloud Run resuelve al iniciar cada instancia; Google recomienda fijar una versión concreta \cite{gcp-run-secrets}. Secret Manager cifra los valores en reposo con AES-256 sin configuración adicional \cite{gcp-sm-enc}.
 
 \begin{figure}[ht]
 \centering
@@ -304,7 +309,7 @@ La Tabla~\ref{tab:controles} relaciona cada control obligatorio con el problema 
 Credencial de \cod{app\_runtime} filtrada & Sin IP Allow, sirve desde cualquier red. Ese rol puede fijar \cod{app.usuario\_id}: RLS protege contra errores de la aplicación, no contra quien ya ejecuta SQL con él. Los disparadores siguen aplicando y la bitácora registra los cambios hechos por la aplicación.\\
 Administrador de la base (rol dueño) & Puede desactivar disparadores o reescribir la bitácora; la cadena y los sellos horarios firmados con una clave que no está en la base lo delatan, salvo lo ocurrido en la última hora (D23).\\
 Consulta mal construida o permiso excesivo & Neon no lo detecta. Lo mitigan el ORM, la denegación por defecto del motor, RLS con \cod{FORCE} y las pruebas celda por celda.\\
-Compromiso del contenedor \cod{verdeazul} o de la identidad de despliegue & La clave Ed25519 está en memoria (D24): quien controle el proceso puede firmar, y \cod{verdeazul-deploy} también puede leerla (Figura~\ref{fig:secretos}). No existe un HSM o servicio de firma no exportable como el Transit de OpenBao previsto en la Parte 1.\\
+Compromiso del contenedor \cod{verdeazul} o de la identidad de despliegue & La clave Ed25519 está en memoria (D24): quien controle el proceso puede firmar, y \cod{verdeazul-deploy} también puede leerla (Figura~\ref{fig:secretos}). No existe un HSM o servicio de firma no exportable como el Transit de OpenBao previsto en la Parte 1. La huella anterior a la rotación sigue aceptándose: si esa clave se filtró, quien la tenga puede firmar documentos que el verificador da por válidos.\\
 Pérdida de datos fuera de la ventana & La ventana de 6~h del plan gratuito es corta; no hay respaldos lógicos externos programados.\\
 \bottomrule
 \end{tabularx}
@@ -375,7 +380,7 @@ La matriz de la Parte 1 tiene 78 celdas (6 roles por 13 columnas: O1a, O1b, O2--
 \label{sec:evidencia}
 % =====================================================================
 
-Las capturas son reales y solo se recortaron márgenes. Indicamos en cada una si proviene de producción o del entorno local de Docker Compose: no tenemos credenciales de prueba de producción, así que la operación denegada se reprodujo en local con cuentas creadas por \cod{crear\_usuarios\_prueba}. Las salidas completas están en \path{docs/informe/evidencia/}.
+Las capturas son reales y solo se recortaron márgenes; cada una indica si viene de producción o del entorno local, donde la operación denegada se reprodujo con cuentas de \cod{crear\_usuarios\_prueba}. Las salidas completas están en \path{docs/informe/evidencia/}.
 
 \begin{figure}[ht]
 \centering
@@ -390,30 +395,30 @@ Las capturas son reales y solo se recortaron márgenes. Indicamos en cada una si
 \label{fig:https}
 \end{figure}
 
-Si la técnica escribe la URL \cod{/gestion/bitacora/}, recibe 403 («La matriz no concede L sobre O8», celda 12), pero esa negación de lista no queda en la bitácora. En el flujo de aprobación con el servicio y el motor reales (\path{evidencia/salida_flujo.txt}), la aprobación del VF emitió el certificado en estado \cod{EMITIDO}.
+Si la técnica escribe la URL \cod{/gestion/bitacora/}, recibe 403 («La matriz no concede L sobre O8», celda 12), pero esa negación de lista no queda en la bitácora.
 
 \begin{figure}[ht]
 \centering
-\begin{minipage}[t]{0.49\linewidth}\centering\captura{\linewidth}{certificado-valido-recorte.png}\\[1pt]{\footnotesize (a) Producción: firma íntegra y clave publicada}\end{minipage}\hfill
+\begin{minipage}[t]{0.49\linewidth}\centering\captura{\linewidth}{certificado_valido.jpeg}\\[1pt]{\footnotesize (a) Producción: firma íntegra y clave publicada}\end{minipage}\hfill
 \begin{minipage}[t]{0.49\linewidth}\centering\captura{\linewidth}{certificado-alterado-recorte.png}\\[1pt]{\footnotesize (b) Producción: \cod{toneladas\_co2} cambiado de 38.2737 a 48.2737 (HTTP 422)}\end{minipage}
-\caption{Verificador público \cod{/certificados/verificar/}. (a) La firma Ed25519 corresponde al contenido y la huella \cod{14428e8d\ldots} es la publicada. El estado es DESCONOCIDO porque el documento es el certificado emitido en el entorno local, firmado de nuevo con la clave de producción fuera del flujo de aprobación (commit \cod{9fc527a}); su id no existe en la base de producción, así que la captura no prueba que esté vigente. (b) Al cambiar un solo campo, la firma deja de corresponder y el documento se rechaza.}
+\caption{Verificador público \cod{/certificados/verificar/}. (a) La firma Ed25519 corresponde al contenido, la huella \cod{827200b6\ldots} es la actual de Verdeazul y el estado es \cod{EMITIDO}: el certificado está en el registro de producción. (b) Al cambiar un solo campo, la firma deja de corresponder y el documento se rechaza.}
 \label{fig:certificado}
 \end{figure}
 
-El verificador independiente (\path{certificados/formato.py}), que no usa Django ni la base, da el mismo resultado con la huella publicada: «VÁLIDO» para \path{evidencia/certificado.json} y «NO VÁLIDO: la firma NO corresponde al contenido» para la copia alterada (\path{evidencia/verificador_independiente.txt}). Así puede comprobarlo un comprador sin acceso a Verdeazul.
+El verificador independiente (\path{certificados/formato.py}), que no usa Django ni la base, permite que un comprador compruebe por sí mismo un certificado sin acceso a Verdeazul.
 
-\textbf{Dependabot.} \path{.github/dependabot.yml} revisa cada semana \cod{pip} y las imágenes de Docker, dirige los PR a \cod{develop}, ignora saltos mayores y admite hasta cinco PR abiertos. La Figura~\ref{fig:dependabot} muestra que funciona: \cod{dependabot[bot]} abrió ocho PR; cinco siguen abiertos y los dos trabajos más recientes fallaron con «Dependabot cannot open any more pull requests» porque se alcanzó ese límite. El equipo cerró sin fusionar el salto a Python 3.15 (\#3) y a Django 6.1.3 (\#4), incompatibles con la base Django 5.2~LTS y Python 3.12, y agregó las reglas \cod{ignore} en el PR~\#9. La pestaña de alertas no tiene ninguna, abierta ni cerrada: durante el proyecto no apareció una alerta de seguridad que atender.
+\textbf{Dependabot.} \path{.github/dependabot.yml} revisa cada semana \cod{pip} y las imágenes de Docker, dirige los PR a \cod{develop}, ignora saltos mayores y admite hasta cinco PR abiertos. La Figura~\ref{fig:dependabot} muestra que funciona: \cod{dependabot[bot]} abrió ocho PR; cinco seguían abiertos el 20-nov y los dos trabajos más recientes fallaron con «Dependabot cannot open any more pull requests» porque se alcanzó ese límite. El equipo cerró sin fusionar el salto a Python 3.15 (\#3) y a Django 6.1.3 (\#4), incompatibles con la base Django 5.2~LTS y Python 3.12, y agregó las reglas \cod{ignore} en el PR~\#9. La pestaña de alertas no tiene ninguna, abierta ni cerrada: durante el proyecto no apareció una alerta de seguridad que atender. Ese mismo día el equipo aplicó en el PR~\#21 las actualizaciones menores que proponían esos PR (\cod{psycopg} 3.3.9, \cod{argon2-cffi-bindings} 26.2.0, \cod{django-allauth} 65.22.1 y \cod{fastapi} 0.163.1); con esas versiones corrimos las pruebas de la sección~\ref{sec:controles}.
 
 \begin{figure}[H]
 \centering
-\begin{minipage}[t]{0.37\linewidth}\centering\captura{\linewidth}{dependabot-prs.png}\\[1pt]{\footnotesize (a) PR de \cod{author:app/dependabot}}\end{minipage}\hfill
-\begin{minipage}[t]{0.33\linewidth}\centering\captura{\linewidth}{dependabot-jobs.png}\\[1pt]{\footnotesize (b) Trabajos recientes de \cod{requirements.txt}}\end{minipage}\hfill
-\begin{minipage}[t]{0.27\linewidth}\centering\captura{\linewidth}{dependabot-alertas.png}\\[1pt]{\footnotesize (c) \emph{Dependabot alerts}}\end{minipage}
+\begin{minipage}[t]{0.33\linewidth}\centering\captura{\linewidth}{dependabot-prs.png}\\[1pt]{\footnotesize (a) PR de \cod{author:app/dependabot}}\end{minipage}\hfill
+\begin{minipage}[t]{0.31\linewidth}\centering\captura{\linewidth}{dependabot-jobs.png}\\[1pt]{\footnotesize (b) Trabajos recientes de \cod{requirements.txt}}\end{minipage}\hfill
+\begin{minipage}[t]{0.26\linewidth}\centering\captura{\linewidth}{dependabot-alertas.png}\\[1pt]{\footnotesize (c) \emph{Dependabot alerts}}\end{minipage}
 \caption{Dependabot en \cod{Guzroj/Proyecto2\_Seguridad} (GitHub, 20-nov-2026).}
 \label{fig:dependabot}
 \end{figure}
+\FloatBarrier  % si queda algún flotante pendiente, se coloca antes de las referencias
 
-\pendiente{\textbf{Evidencia que no pudimos obtener.} (1)~\emph{Settings} $\rightarrow$ \emph{Code security}: la cuenta usada no administra el repositorio. (2)~Etiquetas \cod{v1.0.0} y \cod{sha-} en Artifact Registry: sin acceso a la consola. (3)~Operación denegada y certificado \cod{EMITIDO} en producción: requieren credenciales de prueba de producción; se muestran en local.}
 
 % =====================================================================
 \begin{thebibliography}{99}
