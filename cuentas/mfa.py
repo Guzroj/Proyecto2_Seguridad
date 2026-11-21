@@ -19,6 +19,7 @@ Segundo factor (O7d) y reautenticación.
     generados) y también renueva el identificador.
 """
 
+import logging
 import time
 from functools import wraps
 from urllib.parse import urlencode
@@ -32,10 +33,14 @@ from django.shortcuts import redirect
 from django.urls import resolve, reverse
 
 from autorizacion import roles
+from nucleo import ganchos
+from nucleo.acciones import Accion
 from nucleo.errores import ReautenticacionRequerida
 
 from . import sesion
 from .selectores import roles_vigentes
+
+log = logging.getLogger("verdeazul.cuentas")
 
 
 def ventana_mfa() -> int:
@@ -169,8 +174,27 @@ def renovar_identificador(sender, request, user, authenticator, reauthenticated=
 
 @receiver(authenticator_added, dispatch_uid="cuentas_totp_activado")
 def totp_activado(sender, request, user, authenticator, **kwargs):
-    # La activación ya verificó un código del nuevo TOTP: es un segundo factor reciente.
-    if request is None or authenticator.type != Authenticator.Type.TOTP:
+    if request is None:
         return
+    # RG4 y C21 (Todos·O7d CR): registrar un factor es una escritura sobre O7d y queda en la
+    # bitácora a nombre de la propia cuenta. Solo el tipo de factor: nunca el secreto ni los
+    # códigos. Deja rastro, p. ej., de quien registre un factor tras un restablecimiento (C17).
+    # allauth avisa con on_commit: el factor ya está guardado y no hay nada que revertir, así
+    # que un fallo de la bitácora se deja en los registros en vez de romper la respuesta.
+    try:
+        ganchos.registrar_evento(
+            actor=user,
+            accion=Accion.FACTOR_REGISTRAR,
+            recurso_tipo="cuenta",
+            recurso_id=str(user.pk),
+            despues={"tipo": authenticator.type},
+            detalle="Segundo factor registrado por la propia cuenta.",
+        )
+    except Exception:
+        log.exception("No se pudo registrar en la bitácora el factor %s de la cuenta %s.",
+                      authenticator.type, user.pk)
+    if authenticator.type != Authenticator.Type.TOTP:
+        return
+    # La activación ya verificó un código del nuevo TOTP: es un segundo factor reciente.
     record_authentication(request, user, "mfa", id=authenticator.pk, type=authenticator.type, reauthenticated=True)
     _renovar(request)
