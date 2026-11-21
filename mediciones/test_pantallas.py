@@ -93,6 +93,25 @@ class CatalogoTests(FlujoBase):
         self.assertIsNotNone(anterior.vigente_hasta)
         self.assertEqual(self.parcela.versiones.count(), 2)
 
+    def test_geometria_por_vertices_en_pantalla(self):
+        """El AC escribe vértices «latitud, longitud»; la nueva versión parte de los vigentes."""
+        self.escenario()
+        cliente = self.entrar(self.ac)
+        r = cliente.post(reverse("catalogo_parcela_nueva", args=[self.finca.pk]),
+                         {"codigo": "V1", "area_ha": "1",
+                          "geometria": "10.100, -84.000\n10.110, -84.000\n10.110, -83.990\n10.100, -83.990"})
+        self.assertEqual(r.status_code, 302)
+        parcela = self.finca.parcelas.get(codigo="V1")
+        self.assertEqual(parcela.version_vigente().geometria["coordinates"][0][0], [-84.0, 10.1])
+        ficha = cliente.get(reverse("catalogo_parcela", args=[parcela.pk]))
+        self.assertContains(ficha, "10.1, -84.0")                       # vértices legibles, no JSON
+        formulario = cliente.get(reverse("catalogo_parcela_geometria", args=[parcela.pk]))
+        self.assertContains(formulario, "10.11, -83.99")                 # viene con los vigentes
+        r = cliente.post(reverse("catalogo_parcela_nueva", args=[self.finca.pk]),   # C20 sigue igual
+                         {"codigo": "V2", "area_ha": "1",
+                          "geometria": "10.105, -84.000\n10.115, -84.000\n10.115, -83.990"})
+        self.assertContains(r, "C20", status_code=400)
+
     def test_tc_no_crea_fincas_aunque_llame_la_url(self):
         r = self.entrar(self.tc).post(reverse("catalogo_finca_nueva"),
                                       {"nombre": "X", "ubicacion": "Y", "propietario": self.pf.pk})
