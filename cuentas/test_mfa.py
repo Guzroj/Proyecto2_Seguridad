@@ -145,6 +145,25 @@ class ActivacionTOTPTests(TransactionTestCase):
         registro = Sesion.objects.get(usuario=u, cerrada_en__isnull=True)
         self.assertEqual(registro.clave_hash, sesion.hash_clave(self.client.session.session_key))
 
+    def test_registrar_un_factor_queda_en_la_bitacora_sin_el_secreto(self):
+        """RG4 y C21: la escritura sobre O7d queda a nombre de la propia cuenta, sin secretos."""
+        from bitacora.models import Evento
+
+        u = crear_cuenta("ana", EstadoCuenta.ACTIVA)
+        services.agregar_rol(u, "TC")
+        self.client.post(reverse("account_login"), {"login": "ana", "password": CLAVE})
+        self.client.post(reverse("account_reauthenticate"), {"password": CLAVE})
+        self.client.get(reverse("mfa_activate_totp"))
+        secreto = self.client.session["mfa.totp.secret"]
+        self.client.post(reverse("mfa_activate_totp"), {"code": codigo_actual(secreto)})
+        self.assertTrue(mfa.tiene_totp(u))
+
+        eventos = Evento.objects.filter(accion="factor:registrar", actor_id=u.pk)
+        self.assertEqual(sorted(e.despues["tipo"] for e in eventos), ["recovery_codes", "totp"])
+        for e in eventos:
+            self.assertEqual((e.resultado, e.recurso_id), ("OK", str(u.pk)))
+            self.assertNotIn(secreto, str(e.despues) + e.detalle)
+
 
 class C21Tests(MFABase):
     def test_con_factor_registrado_ver_o_generar_codigos_exige_mfa_reciente(self):
