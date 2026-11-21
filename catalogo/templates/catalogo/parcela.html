@@ -19,15 +19,15 @@
   <p>Modificar la geometría crea una versión nueva; las anteriores no cambian y las mediciones y
      certificados conservan la versión que usaron (C20).</p>
   <table>
-    <thead><tr><th>Versión</th><th>Área (ha)</th><th>Vigente desde</th><th>Vigente hasta</th><th>Geometría</th></tr></thead>
+    <thead><tr><th>Versión</th><th>Área (ha)</th><th>Vigente desde</th><th>Vigente hasta</th><th>Vértices (latitud, longitud)</th></tr></thead>
     <tbody>
-      {% for v in versiones %}
+      {% for fila in versiones %}
         <tr>
-          <td>{{ v.numero }}{% if not v.vigente_hasta %} (vigente){% endif %}</td>
-          <td>{{ v.area_ha }}</td>
-          <td>{{ v.vigente_desde|date:"d/m/Y H:i" }}</td>
-          <td>{{ v.vigente_hasta|date:"d/m/Y H:i"|default:"—" }}</td>
-          <td><code>{{ v.geometria }}</code></td>
+          <td>{{ fila.v.numero }}{% if not fila.v.vigente_hasta %} (vigente){% endif %}</td>
+          <td>{{ fila.v.area_ha }}</td>
+          <td>{{ fila.v.vigente_desde|date:"d/m/Y H:i" }}</td>
+          <td>{{ fila.v.vigente_hasta|date:"d/m/Y H:i"|default:"—" }}</td>
+          <td><code>{{ fila.vertices|linebreaksbr }}</code></td>
         </tr>
       {% endfor %}
     </tbody>

@@ -36,6 +36,7 @@ from .formularios import (
     FincaNuevaForm,
     GeometriaForm,
     ParcelaNuevaForm,
+    poligono_a_texto,
 )
 from .models import DatosPropietario, EstadoCatalogo, Finca, Parcela
 
@@ -162,9 +163,10 @@ def propietario_datos(request, pk):
 @login_required
 def parcela(request, pk):
     p = _leer(request.user, Parcela, pk, Accion.PARCELA_LEER, "parcela")
+    versiones = [{"v": v, "vertices": poligono_a_texto(v.geometria)} for v in p.versiones.order_by("-numero")]
     return render(request, "catalogo/parcela.html", {
         "parcela": p,
-        "versiones": p.versiones.order_by("-numero"),
+        "versiones": versiones,
         "gestiona": "AC" in roles_vigentes(request.user) and p.estado == EstadoCatalogo.ACTIVA,
     })
 
@@ -192,7 +194,10 @@ def parcela_geometria(request, pk):
         messages.success(request, f"Geometría actualizada: versión {version.numero}. La anterior no cambia.")
         return redirect("catalogo_parcela", pk=p.pk)
 
-    return _formulario(request, GeometriaForm(request.POST or None),
+    # Se parte de la geometría vigente: basta con corregir los vértices que cambiaron.
+    vigente = p.version_vigente()
+    inicial = {"area_ha": vigente.area_ha, "geometria": poligono_a_texto(vigente.geometria)} if vigente else None
+    return _formulario(request, GeometriaForm(request.POST or None, initial=inicial),
                        f"Nueva geometría de {p.codigo}", "Guardar versión", guardar)
 
 
