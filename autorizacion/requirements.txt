@@ -3,6 +3,6 @@
 # --no-allow-unauthenticated y la plataforma valida el token OIDC del llamador
 # antes de entregar la petición. Esa es la frontera de confianza real; una
 # verificación explícita del token sería solo defensa en profundidad.
-fastapi==0.163.1
+fastapi==0.165.0
 uvicorn[standard]==0.54.0
 httpx==0.28.1
